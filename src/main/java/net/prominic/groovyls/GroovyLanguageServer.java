@@ -92,6 +92,14 @@ public class GroovyLanguageServer implements LanguageServer, LanguageClientAware
         SignatureHelpOptions signatureHelpOptions = new SignatureHelpOptions();
         signatureHelpOptions.setTriggerCharacters(Arrays.asList("(", ","));
         serverCapabilities.setSignatureHelpProvider(signatureHelpOptions);
+        // Register semantic tokens provider for full document tokenization
+        org.eclipse.lsp4j.SemanticTokensWithRegistrationOptions semanticTokensOptions = 
+            new org.eclipse.lsp4j.SemanticTokensWithRegistrationOptions();
+        semanticTokensOptions.setLegend(new org.eclipse.lsp4j.SemanticTokensLegend(
+            net.prominic.groovyls.providers.SemanticTokensProvider.TOKEN_TYPES, 
+            java.util.Collections.emptyList()));
+        semanticTokensOptions.setFull(true);
+        serverCapabilities.setSemanticTokensProvider(semanticTokensOptions);
 
         InitializeResult initializeResult = new InitializeResult(serverCapabilities);
         return CompletableFuture.completedFuture(initializeResult);

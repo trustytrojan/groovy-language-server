@@ -1,3 +1,12 @@
+## Fork notice
+
+This is a fork of [GroovyLanguageServer/groovy-language-server](/GroovyLanguageServer/groovy-language-server) that adds:
+
+- Jenkins pipeline step function support via parsing of GDSL files created by Jenkins instances.
+- Semantic tokens over LSP for dynamic coloring/highlighting
+
+The original README continues below.
+
 # Groovy Language Server
 
 A [language server](https://microsoft.github.io/language-server-protocol/) for [Groovy](http://groovy-lang.org/).

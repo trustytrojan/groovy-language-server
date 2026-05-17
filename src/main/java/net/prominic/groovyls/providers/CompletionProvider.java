@@ -63,17 +63,25 @@ import io.github.classgraph.ScanResult;
 import net.prominic.groovyls.compiler.ast.ASTNodeVisitor;
 import net.prominic.groovyls.compiler.util.GroovyASTUtils;
 import net.prominic.groovyls.compiler.util.GroovydocUtils;
+import net.prominic.groovyls.gdsl.GdslSymbolsConverter;
+import net.prominic.groovyls.gdsl.JenkinsSymbol;
 import net.prominic.groovyls.util.GroovyLanguageServerUtils;
 
 public class CompletionProvider {
 	private ASTNodeVisitor ast;
 	private ScanResult classGraphScanResult;
+	private List<JenkinsSymbol> gdslSymbols;
 	private int maxItemCount = 1000;
 	private boolean isIncomplete = false;
 
 	public CompletionProvider(ASTNodeVisitor ast, ScanResult classGraphScanResult) {
+		this(ast, classGraphScanResult, Collections.emptyList());
+	}
+
+	public CompletionProvider(ASTNodeVisitor ast, ScanResult classGraphScanResult, List<JenkinsSymbol> gdslSymbols) {
 		this.ast = ast;
 		this.classGraphScanResult = classGraphScanResult;
+		this.gdslSymbols = gdslSymbols != null ? gdslSymbols : Collections.emptyList();
 	}
 
 	public CompletableFuture<Either<List<CompletionItem>, CompletionList>> provideCompletion(
@@ -89,6 +97,8 @@ public class CompletionProvider {
 			return CompletableFuture.completedFuture(Either.forLeft(Collections.emptyList()));
 		}
 		ASTNode parentNode = ast.getParent(offsetNode);
+		
+		boolean isInNodeBlock = isInsideNodeBlock(offsetNode);
 
 		isIncomplete = false;
 		List<CompletionItem> items = new ArrayList<>();
@@ -104,15 +114,15 @@ public class CompletionProvider {
 		} else if (parentNode instanceof MethodCallExpression) {
 			populateItemsFromMethodCallExpression((MethodCallExpression) parentNode, position, items);
 		} else if (offsetNode instanceof VariableExpression) {
-			populateItemsFromVariableExpression((VariableExpression) offsetNode, position, items);
+			populateItemsFromVariableExpression((VariableExpression) offsetNode, position, items, isInNodeBlock);
 		} else if (offsetNode instanceof ImportNode) {
 			populateItemsFromImportNode((ImportNode) offsetNode, position, items);
 		} else if (offsetNode instanceof ClassNode) {
 			populateItemsFromClassNode((ClassNode) offsetNode, position, items);
 		} else if (offsetNode instanceof MethodNode) {
-			populateItemsFromScope(offsetNode, "", items);
+			populateItemsFromScope(offsetNode, "", items, isInNodeBlock);
 		} else if (offsetNode instanceof Statement) {
-			populateItemsFromScope(offsetNode, "", items);
+			populateItemsFromScope(offsetNode, "", items, isInNodeBlock);
 		}
 
 		if (isIncomplete) {
@@ -265,14 +275,28 @@ public class CompletionProvider {
 		populateTypes(constructorCallExpr, typeName, new HashSet<>(), true, false, false, items);
 	}
 
+	private boolean isInsideNodeBlock(ASTNode node) {
+		ASTNode current = node;
+		while (current != null) {
+			if (current instanceof org.codehaus.groovy.ast.expr.MethodCallExpression) {
+				org.codehaus.groovy.ast.expr.MethodCallExpression call = (org.codehaus.groovy.ast.expr.MethodCallExpression) current;
+				if ("node".equals(call.getMethodAsString())) {
+					return true;
+				}
+			}
+			current = ast.getParent(current);
+		}
+		return false;
+	}
+
 	private void populateItemsFromVariableExpression(VariableExpression varExpr, Position position,
-			List<CompletionItem> items) {
+			List<CompletionItem> items, boolean isInNodeBlock) {
 		Range varRange = GroovyLanguageServerUtils.astNodeToRange(varExpr);
 		if (varRange == null) {
 			return;
 		}
 		String memberName = getMemberName(varExpr.getName(), varRange, position);
-		populateItemsFromScope(varExpr, memberName, items);
+		populateItemsFromScope(varExpr, memberName, items, isInNodeBlock);
 	}
 
 	private void populateItemsFromPropertiesAndFields(List<PropertyNode> properties, List<FieldNode> fields,
@@ -378,7 +402,7 @@ public class CompletionProvider {
 		items.addAll(variableItems);
 	}
 
-	private void populateItemsFromScope(ASTNode node, String namePrefix, List<CompletionItem> items) {
+	private void populateItemsFromScope(ASTNode node, String namePrefix, List<CompletionItem> items, boolean isInNodeBlock) {
 		Set<String> existingNames = new HashSet<>();
 		ASTNode current = node;
 		while (current != null) {
@@ -396,6 +420,20 @@ public class CompletionProvider {
 			}
 			current = ast.getParent(current);
 		}
+		
+		// Add GDSL symbols to scope completions
+		if (!gdslSymbols.isEmpty()) {
+			List<JenkinsSymbol> filteredGdsl = new ArrayList<>();
+			for (JenkinsSymbol symbol : gdslSymbols) {
+				if (symbol.isNodeScoped && !isInNodeBlock) {
+					continue;
+				}
+				filteredGdsl.add(symbol);
+			}
+			List<CompletionItem> gdslItems = GdslSymbolsConverter.toCompletionItems(filteredGdsl, namePrefix, existingNames);
+			items.addAll(gdslItems);
+		}
+		
 		populateTypes(node, namePrefix, existingNames, items);
 	}
 

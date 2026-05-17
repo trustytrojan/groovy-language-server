@@ -41,9 +41,15 @@ import net.prominic.groovyls.util.GroovyLanguageServerUtils;
 
 public class DocumentSymbolProvider {
 	private ASTNodeVisitor ast;
+	private List<net.prominic.groovyls.gdsl.JenkinsSymbol> gdslSymbols;
 
 	public DocumentSymbolProvider(ASTNodeVisitor ast) {
+		this(ast, java.util.Collections.emptyList());
+	}
+
+	public DocumentSymbolProvider(ASTNodeVisitor ast, List<net.prominic.groovyls.gdsl.JenkinsSymbol> gdslSymbols) {
 		this.ast = ast;
+		this.gdslSymbols = gdslSymbols != null ? gdslSymbols : java.util.Collections.emptyList();
 	}
 
 	public CompletableFuture<List<Either<SymbolInformation, DocumentSymbol>>> provideDocumentSymbols(
@@ -81,6 +87,20 @@ public class DocumentSymbolProvider {
 		}).filter(symbolInformation -> symbolInformation != null).map(node -> {
 			return Either.<SymbolInformation, DocumentSymbol>forLeft(node);
 		}).collect(Collectors.toList());
+
+		// Add GDSL symbols as DocumentSymbols (no precise range available; use start of document)
+		if (gdslSymbols != null && !gdslSymbols.isEmpty()) {
+			org.eclipse.lsp4j.Position start = new org.eclipse.lsp4j.Position(0, 0);
+			org.eclipse.lsp4j.Range zeroRange = new org.eclipse.lsp4j.Range(start, start);
+			for (net.prominic.groovyls.gdsl.JenkinsSymbol s : gdslSymbols) {
+				org.eclipse.lsp4j.DocumentSymbol ds = new org.eclipse.lsp4j.DocumentSymbol();
+				ds.setName(s.name);
+				ds.setKind(org.eclipse.lsp4j.SymbolKind.Function);
+				ds.setRange(zeroRange);
+				ds.setSelectionRange(zeroRange);
+				symbols.add(Either.<SymbolInformation, DocumentSymbol>forRight(ds));
+			}
+		}
 		return CompletableFuture.completedFuture(symbols);
 	}
 }
