@@ -10,6 +10,9 @@ java {
 
 test {
   useJUnitPlatform()
+  testLogging {
+    showStandardStreams = true
+  }
 }
 
 ext.mainClass = "net.prominic.groovyls.GroovyLanguageServer"

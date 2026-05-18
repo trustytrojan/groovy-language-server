@@ -7,6 +7,9 @@ This is a fork of [GroovyLanguageServer/groovy-language-server](/GroovyLanguageS
 
 I mainly did this so that the VS Code experience is as close to using the [Red Hat Java extension](https://marketplace.visualstudio.com/items?itemName=redhat.java) as possible. Semantic tokens/highlighting is a major part of that.
 
+## Notes
+- Runtime class symbol detection (e.g. for `java.lang.System`) works best when running the LS on Java 8.
+
 The original README continues below.
 
 # Groovy Language Server
