@@ -10,7 +10,6 @@
       "request": "launch",
       "runtimeExecutable": "${execPath}",
       "args": ["--extensionDevelopmentPath=${workspaceRoot}/build"],
-      "stopOnEntry": false,
       "sourceMaps": true,
       "outFiles": ["${workspaceRoot}/**/*.js"],
       "internalConsoleOptions": "openOnSessionStart",
