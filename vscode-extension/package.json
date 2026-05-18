@@ -21,6 +21,13 @@
     "Groovy",
     "Grails"
   ],
+  "files": [
+    "README.md",
+    "LICENSE",
+    "extension.js",
+    "extension.js.map",
+    "bin/groovy-language-server-all.jar"
+  ],
   "main": "extension",
   "engines": {
     "vscode": "^1.99.0"
