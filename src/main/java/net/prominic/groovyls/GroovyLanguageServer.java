@@ -26,11 +26,14 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 
 import org.eclipse.lsp4j.CompletionOptions;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
+import org.eclipse.lsp4j.SemanticTokensLegend;
+import org.eclipse.lsp4j.SemanticTokensWithRegistrationOptions;
 import org.eclipse.lsp4j.ServerCapabilities;
 import org.eclipse.lsp4j.SignatureHelpOptions;
 import org.eclipse.lsp4j.TextDocumentSyncKind;
@@ -43,6 +46,7 @@ import org.eclipse.lsp4j.services.WorkspaceService;
 
 import net.prominic.groovyls.config.CompilationUnitFactory;
 import net.prominic.groovyls.config.ICompilationUnitFactory;
+import net.prominic.groovyls.providers.SemanticTokensProvider;
 
 public class GroovyLanguageServer implements LanguageServer, LanguageClientAware {
 
@@ -92,12 +96,10 @@ public class GroovyLanguageServer implements LanguageServer, LanguageClientAware
         SignatureHelpOptions signatureHelpOptions = new SignatureHelpOptions();
         signatureHelpOptions.setTriggerCharacters(Arrays.asList("(", ","));
         serverCapabilities.setSignatureHelpProvider(signatureHelpOptions);
+
         // Register semantic tokens provider for full document tokenization
-        org.eclipse.lsp4j.SemanticTokensWithRegistrationOptions semanticTokensOptions = 
-            new org.eclipse.lsp4j.SemanticTokensWithRegistrationOptions();
-        semanticTokensOptions.setLegend(new org.eclipse.lsp4j.SemanticTokensLegend(
-            net.prominic.groovyls.providers.SemanticTokensProvider.TOKEN_TYPES, 
-            java.util.Collections.emptyList()));
+        SemanticTokensWithRegistrationOptions semanticTokensOptions = new SemanticTokensWithRegistrationOptions();
+        semanticTokensOptions.setLegend(new SemanticTokensLegend(SemanticTokensProvider.TOKEN_TYPES, Collections.emptyList()));
         semanticTokensOptions.setFull(true);
         serverCapabilities.setSemanticTokensProvider(semanticTokensOptions);
 
