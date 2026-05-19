@@ -63,25 +63,17 @@ import io.github.classgraph.ScanResult;
 import net.prominic.groovyls.compiler.ast.ASTNodeVisitor;
 import net.prominic.groovyls.compiler.util.GroovyASTUtils;
 import net.prominic.groovyls.compiler.util.GroovydocUtils;
-import net.prominic.groovyls.gdsl.GdslSymbolsConverter;
-import net.prominic.groovyls.gdsl.JenkinsSymbol;
 import net.prominic.groovyls.util.GroovyLanguageServerUtils;
 
 public class CompletionProvider {
 	private ASTNodeVisitor ast;
 	private ScanResult classGraphScanResult;
-	private List<JenkinsSymbol> gdslSymbols;
 	private int maxItemCount = 1000;
 	private boolean isIncomplete = false;
 
 	public CompletionProvider(ASTNodeVisitor ast, ScanResult classGraphScanResult) {
-		this(ast, classGraphScanResult, Collections.emptyList());
-	}
-
-	public CompletionProvider(ASTNodeVisitor ast, ScanResult classGraphScanResult, List<JenkinsSymbol> gdslSymbols) {
 		this.ast = ast;
 		this.classGraphScanResult = classGraphScanResult;
-		this.gdslSymbols = gdslSymbols != null ? gdslSymbols : Collections.emptyList();
 	}
 
 	public CompletableFuture<Either<List<CompletionItem>, CompletionList>> provideCompletion(
@@ -421,18 +413,8 @@ public class CompletionProvider {
 			current = ast.getParent(current);
 		}
 		
-		// Add GDSL symbols to scope completions
-		if (!gdslSymbols.isEmpty()) {
-			List<JenkinsSymbol> filteredGdsl = new ArrayList<>();
-			for (JenkinsSymbol symbol : gdslSymbols) {
-				if (symbol.isNodeScoped && !isInNodeBlock) {
-					continue;
-				}
-				filteredGdsl.add(symbol);
-			}
-			List<CompletionItem> gdslItems = GdslSymbolsConverter.toCompletionItems(filteredGdsl, namePrefix, existingNames);
-			items.addAll(gdslItems);
-		}
+		// GDSL symbols are now injected as methods into ClassNodes and will be
+		// included through the normal method completion path above
 		
 		populateTypes(node, namePrefix, existingNames, items);
 	}

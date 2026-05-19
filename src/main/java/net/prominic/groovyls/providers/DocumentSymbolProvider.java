@@ -31,30 +31,20 @@ import org.codehaus.groovy.ast.FieldNode;
 import org.codehaus.groovy.ast.MethodNode;
 import org.codehaus.groovy.ast.PropertyNode;
 import org.eclipse.lsp4j.DocumentSymbol;
-import org.eclipse.lsp4j.Location;
-import org.eclipse.lsp4j.Position;
-import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.SymbolInformation;
-import org.eclipse.lsp4j.SymbolKind;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 
 import net.prominic.groovyls.compiler.ast.ASTNodeVisitor;
 import net.prominic.groovyls.compiler.util.GroovyASTUtils;
-import net.prominic.groovyls.gdsl.JenkinsSymbol;
+
 import net.prominic.groovyls.util.GroovyLanguageServerUtils;
 
 public class DocumentSymbolProvider {
 	private ASTNodeVisitor ast;
-	private List<net.prominic.groovyls.gdsl.JenkinsSymbol> gdslSymbols;
 
 	public DocumentSymbolProvider(ASTNodeVisitor ast) {
-		this(ast, java.util.Collections.emptyList());
-	}
-
-	public DocumentSymbolProvider(ASTNodeVisitor ast, List<net.prominic.groovyls.gdsl.JenkinsSymbol> gdslSymbols) {
 		this.ast = ast;
-		this.gdslSymbols = gdslSymbols != null ? gdslSymbols : java.util.Collections.emptyList();
 	}
 
 	public CompletableFuture<List<Either<SymbolInformation, DocumentSymbol>>> provideDocumentSymbols(
@@ -93,16 +83,9 @@ public class DocumentSymbolProvider {
 			return Either.<SymbolInformation, DocumentSymbol>forLeft(node);
 		}).collect(Collectors.toList());
 
-		// Add GDSL symbols as DocumentSymbols (no precise range available; use start of document)
-		if (gdslSymbols != null && !gdslSymbols.isEmpty()) {
-			Position start = new Position(0, 0);
-			Range zeroRange = new Range(start, start);
-			for (JenkinsSymbol s : gdslSymbols) {
-				SymbolInformation symbolInformation = new SymbolInformation(s.name,
-						SymbolKind.Function, new Location(uri.toString(), zeroRange));
-				symbols.add(Either.<SymbolInformation, DocumentSymbol>forLeft(symbolInformation));
-			}
-		}
+		// GDSL symbols are now injected as methods into ClassNodes and will be
+		// included in the symbols above through normal method traversal
+
 		return CompletableFuture.completedFuture(symbols);
 	}
 }

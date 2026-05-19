@@ -222,7 +222,7 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 		URI uri = URI.create(params.getTextDocument().getUri());
 		recompileIfContextChanged(uri);
 
-		HoverProvider provider = new HoverProvider(astVisitor, gdslSymbolsManager.getSymbols());
+		HoverProvider provider = new HoverProvider(astVisitor);
 		return provider.provideHover(params.getTextDocument(), params.getPosition());
 	}
 
@@ -264,8 +264,7 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 
 		CompletableFuture<Either<List<CompletionItem>, CompletionList>> result = null;
 		try {
-			CompletionProvider provider = new CompletionProvider(astVisitor, classGraphScanResult, 
-					gdslSymbolsManager.getSymbols());
+		CompletionProvider provider = new CompletionProvider(astVisitor, classGraphScanResult);
 			result = provider.provideCompletion(params.getTextDocument(), params.getPosition(), params.getContext());
 		} finally {
 			if (originalSource != null) {
@@ -322,7 +321,7 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 		}
 
 		try {
-			SignatureHelpProvider provider = new SignatureHelpProvider(astVisitor, gdslSymbolsManager.getSymbols());
+			SignatureHelpProvider provider = new SignatureHelpProvider(astVisitor);
 			return provider.provideSignatureHelp(params.getTextDocument(), params.getPosition());
 		} finally {
 			if (originalSource != null) {
@@ -362,7 +361,7 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 		URI uri = URI.create(params.getTextDocument().getUri());
 		recompileIfContextChanged(uri);
 
-		DocumentSymbolProvider provider = new DocumentSymbolProvider(astVisitor, gdslSymbolsManager.getSymbols());
+		DocumentSymbolProvider provider = new DocumentSymbolProvider(astVisitor);
 		return provider.provideDocumentSymbols(params.getTextDocument());
 	}
 
@@ -374,7 +373,7 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 
 		// Ensure semantic tokens provider is initialized
 		if (semanticTokensProvider == null) {
-			semanticTokensProvider = new SemanticTokensProvider(fileContentsTracker, gdslSymbolsManager.getSymbols(), astVisitor);
+			semanticTokensProvider = new SemanticTokensProvider(fileContentsTracker, astVisitor);
 		}
 
 		// Provide semantic tokens - GDSL symbols are injected before LSP transmission
@@ -404,6 +403,10 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 		}
 		astVisitor = new ASTNodeVisitor();
 		astVisitor.visitCompilationUnit(compilationUnit);
+		
+		// Inject GDSL symbols as methods into ClassNodes so they're available
+		// through normal AST queries in providers
+		gdslSymbolsManager.injectGdslSymbolsIntoClassNodes(astVisitor.getClassNodes());
 	}
 
 	private void visitAST(Set<URI> uris) {
@@ -415,6 +418,10 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 			return;
 		}
 		astVisitor.visitCompilationUnit(compilationUnit, uris);
+		
+		// Inject GDSL symbols as methods into ClassNodes so they're available
+		// through normal AST queries in providers
+		gdslSymbolsManager.injectGdslSymbolsIntoClassNodes(astVisitor.getClassNodes());
 	}
 
 	private boolean createOrUpdateCompilationUnit() {

@@ -361,9 +361,6 @@ public class GroovyASTUtils {
             MethodCallExpression methodCallExpr = (MethodCallExpression) node;
             ClassNode leftType = getTypeOfNode(methodCallExpr.getObjectExpression(), astVisitor);
             if (leftType != null) {
-                if (leftType.getName().contains("java.util"))
-                    System.out.printf("all methods of '%s': %s\n", leftType.getName(),
-                            leftType.getAllDeclaredMethods());
                 return leftType.getAllDeclaredMethods().stream()
                         .filter(m -> m.getName().equals(methodCallExpr.getMethod().getText()))
                         .collect(Collectors.toList());

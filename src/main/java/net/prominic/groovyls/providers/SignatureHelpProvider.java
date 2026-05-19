@@ -39,28 +39,19 @@ import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.SignatureHelp;
 import org.eclipse.lsp4j.SignatureInformation;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
-import org.eclipse.lsp4j.jsonrpc.messages.Either;
 
 import groovy.lang.groovydoc.Groovydoc;
 import net.prominic.groovyls.compiler.ast.ASTNodeVisitor;
 import net.prominic.groovyls.compiler.util.GroovyASTUtils;
 import net.prominic.groovyls.compiler.util.GroovydocUtils;
-import net.prominic.groovyls.gdsl.GdslSymbolsConverter;
-import net.prominic.groovyls.gdsl.JenkinsSymbol;
 import net.prominic.groovyls.util.GroovyLanguageServerUtils;
 import net.prominic.groovyls.util.GroovyNodeToStringUtils;
 
 public class SignatureHelpProvider {
 	private ASTNodeVisitor ast;
-	private List<JenkinsSymbol> gdslSymbols;
 
 	public SignatureHelpProvider(ASTNodeVisitor ast) {
-		this(ast, Collections.emptyList());
-	}
-
-	public SignatureHelpProvider(ASTNodeVisitor ast, List<JenkinsSymbol> gdslSymbols) {
 		this.ast = ast;
-		this.gdslSymbols = gdslSymbols != null ? gdslSymbols : Collections.emptyList();
 	}
 
 	public CompletableFuture<SignatureHelp> provideSignatureHelp(TextDocumentIdentifier textDocument,
@@ -93,53 +84,7 @@ public class SignatureHelpProvider {
 
 		List<MethodNode> methods = GroovyASTUtils.getMethodOverloadsFromCallExpression(methodCall, ast);
 		if (methods.isEmpty()) {
-			String methodName = methodCall.getMethodAsString();
-			List<JenkinsSymbol> matchedSymbols = new ArrayList<>();
-			if (methodName != null && gdslSymbols != null) {
-				for (JenkinsSymbol symbol : gdslSymbols) {
-					if (methodName.equals(symbol.name)) {
-						matchedSymbols.add(symbol);
-					}
-				}
-			}
-			
-			if (matchedSymbols.isEmpty()) {
-				return CompletableFuture.completedFuture(new SignatureHelp(Collections.emptyList(), -1, -1));
-			}
-			
-			List<SignatureInformation> sigInfos = new ArrayList<>();
-			for (JenkinsSymbol symbol : matchedSymbols) {
-				sigInfos.add(GdslSymbolsConverter.toSignatureInformation(symbol));
-			}
-
-			int activeSignature = 0;
-			int bestParamCountDiff = Integer.MAX_VALUE;
-			int maxParams = -1;
-			int maxParamsIndex = 0;
-
-			for (int i = 0; i < sigInfos.size(); i++) {
-				SignatureInformation sigInfo = sigInfos.get(i);
-				int paramCount = sigInfo.getParameters() != null ? sigInfo.getParameters().size() : 0;
-				
-				if (paramCount > maxParams) {
-					maxParams = paramCount;
-					maxParamsIndex = i;
-				}
-
-				if (paramCount > activeParamIndex) {
-					int diff = paramCount - (activeParamIndex + 1);
-					if (diff < bestParamCountDiff) {
-						bestParamCountDiff = diff;
-						activeSignature = i;
-					}
-				}
-			}
-
-			if (bestParamCountDiff == Integer.MAX_VALUE) {
-				activeSignature = maxParamsIndex;
-			}
-			
-			return CompletableFuture.completedFuture(new SignatureHelp(sigInfos, activeSignature, activeParamIndex));
+			return CompletableFuture.completedFuture(new SignatureHelp(Collections.emptyList(), -1, -1));
 		}
 
 		List<SignatureInformation> sigInfos = new ArrayList<>();

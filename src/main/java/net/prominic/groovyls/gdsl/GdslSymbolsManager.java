@@ -21,15 +21,24 @@ package net.prominic.groovyls.gdsl;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+
+import org.codehaus.groovy.ast.AnnotatedNode;
+import org.codehaus.groovy.ast.ClassNode;
+import org.codehaus.groovy.ast.MethodNode;
+import org.codehaus.groovy.ast.Parameter;
+
+import groovy.lang.groovydoc.Groovydoc;
 
 /**
  * Manages GDSL symbol loading and caching for the language server.
- * Searches for gdsl.groovy files in the workspace and maintains a cache of parsed symbols.
+ * Searches for gdsl.groovy files in the workspace and maintains a cache of
+ * parsed symbols.
  */
 public class GdslSymbolsManager {
     private List<JenkinsSymbol> cachedSymbols = Collections.emptyList();
@@ -52,7 +61,7 @@ public class GdslSymbolsManager {
 
         // Search for gdsl.groovy files in the workspace root and one level deep
         List<File> gdslFiles = findGdslFiles(workspaceRoot.toFile());
-        
+
         if (gdslFiles.isEmpty()) {
             cachedSymbols = Collections.emptyList();
             currentGdslFile = null;
@@ -61,7 +70,7 @@ public class GdslSymbolsManager {
 
         // Use the first gdsl.groovy file found
         File gdslFile = gdslFiles.get(0);
-        
+
         // Check if file has been modified
         long fileLastModified = gdslFile.lastModified();
         if (gdslFile.equals(currentGdslFile) && fileLastModified == lastModified && !cachedSymbols.isEmpty()) {
@@ -94,12 +103,99 @@ public class GdslSymbolsManager {
     }
 
     /**
+     * Injects GDSL symbols as synthetic methods into ClassNodes from Groovy source
+     * files.
+     * This makes GDSL methods available through the normal AST query mechanisms
+     * instead of requiring special handling in providers.
+     * Only ClassNodes that represent Groovy source files (not compiled Java
+     * classes)
+     * will receive GDSL symbol injections.
+     * 
+     * @param classNodes collection of ClassNodes to potentially inject symbols into
+     */
+    public void injectGdslSymbolsIntoClassNodes(Collection<ClassNode> classNodes) {
+        if (cachedSymbols.isEmpty() || classNodes.isEmpty()) {
+            return;
+        }
+
+        for (ClassNode classNode : classNodes) {
+            // Only inject GDSL symbols into ClassNodes from Groovy source files
+            // Check if this is a primary class node (being compiled as Groovy source)
+            if (classNode.isScript()) {
+                for (JenkinsSymbol symbol : cachedSymbols) {
+                    injectSymbolAsMethod(classNode, symbol);
+                }
+            }
+        }
+    }
+
+    /**
+     * Creates a synthetic MethodNode from a JenkinsSymbol and adds it to a
+     * ClassNode.
+     * Includes documentation from the symbol if available.
+     */
+    private void injectSymbolAsMethod(ClassNode classNode, JenkinsSymbol symbol) {
+        // Check if method already exists to avoid duplicates
+        if (classNode.getMethod(symbol.name, convertParameters(symbol)) != null) {
+            return;
+        }
+
+        // Create synthetic method node
+        Parameter[] params = convertParameters(symbol);
+        MethodNode methodNode = new MethodNode(
+                symbol.name,
+                9, // ACC_PUBLIC (1) | ACC_STATIC (8) modifiers
+                new ClassNode(Object.class), // Use Object.class for return type
+                params,
+                new ClassNode[0],
+                null // body can be null for synthetic nodes
+        );
+
+        // Mark as synthetic so it doesn't appear in regular code completion
+        methodNode.setSynthetic(true);
+
+        // Add documentation if available from the GDSL symbol
+        if (symbol.doc != null && !symbol.doc.isEmpty()) {
+            // Create Groovydoc object and attach to the method node
+            Groovydoc groovydoc = new Groovydoc("/** " + symbol.doc + " */", methodNode);
+            // Store in node metadata for retrieval by language features (hover, etc.)
+            methodNode.putNodeMetaData(AnnotatedNode.DOC_COMMENT, groovydoc);
+        }
+
+        // Add method to the class
+        classNode.addMethod(methodNode);
+    }
+
+    /**
+     * Converts JenkinsSymbol parameters to Groovy Parameter array.
+     */
+    private Parameter[] convertParameters(JenkinsSymbol symbol) {
+        List<Parameter> params = new ArrayList<>();
+
+        if (symbol.namedParams != null && !symbol.namedParams.isEmpty()) {
+            for (Map<String, Object> paramMap : symbol.namedParams) {
+                String paramName = (String) paramMap.getOrDefault("name", "param");
+                ClassNode paramClassNode = new ClassNode(Object.class);
+                params.add(new Parameter(paramClassNode, paramName));
+            }
+        } else if (symbol.params != null && !symbol.params.isEmpty()) {
+            for (Map.Entry<String, Object> entry : symbol.params.entrySet()) {
+                String paramName = entry.getKey();
+                ClassNode paramClassNode = new ClassNode(Object.class);
+                params.add(new Parameter(paramClassNode, paramName));
+            }
+        }
+
+        return params.toArray(new Parameter[0]);
+    }
+
+    /**
      * Searches for GDSL files in the workspace.
      * Looks for files named "gdsl.groovy" or ending in ".gdsl"
      */
     private List<File> findGdslFiles(File root) {
         List<File> result = new ArrayList<>();
-        
+
         if (!root.exists() || !root.isDirectory()) {
             return result;
         }
@@ -114,22 +210,6 @@ public class GdslSymbolsManager {
             }
         }
 
-        // Search one level deep (but skip common build directories)
-        if (files != null) {
-            for (File dir : files) {
-                if (dir.isDirectory() && !isExcludedDirectory(dir.getName())) {
-                    File[] subFiles = dir.listFiles();
-                    if (subFiles != null) {
-                        for (File file : subFiles) {
-                            if (file.isFile() && isGdslFile(file)) {
-                                result.add(file);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         return result;
     }
 
@@ -138,20 +218,9 @@ public class GdslSymbolsManager {
      */
     private boolean isGdslFile(File file) {
         String name = file.getName();
-        return "gdsl.groovy".equalsIgnoreCase(name) || 
-               name.endsWith(".gdsl") || 
-               name.endsWith(".gdsl.groovy");
-    }
-
-    /**
-     * Checks if a directory should be excluded from GDSL search.
-     */
-    private boolean isExcludedDirectory(String dirName) {
-        return dirName.startsWith(".") || 
-               "build".equals(dirName) || 
-               "dist".equals(dirName) || 
-               "node_modules".equals(dirName) || 
-               "target".equals(dirName);
+        return "gdsl.groovy".equalsIgnoreCase(name) ||
+                name.endsWith(".gdsl") ||
+                name.endsWith(".gdsl.groovy");
     }
 
     /**

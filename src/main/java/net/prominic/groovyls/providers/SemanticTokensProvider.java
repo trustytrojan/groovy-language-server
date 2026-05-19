@@ -26,7 +26,6 @@ import org.codehaus.groovy.ast.expr.ClassExpression;
 import org.codehaus.groovy.ast.expr.PropertyExpression;
 import org.codehaus.groovy.ast.ClassNode;
 import net.prominic.groovyls.compiler.util.GroovyASTUtils;
-import net.prominic.groovyls.gdsl.JenkinsSymbol;
 
 import org.codehaus.groovy.ast.expr.MethodCallExpression;
 import net.prominic.groovyls.util.GroovyLanguageServerUtils;
@@ -40,7 +39,6 @@ import net.prominic.groovyls.util.GroovyLanguageServerUtils;
  */
 public class SemanticTokensProvider {
 	private final FileContentsTracker fileContentsTracker;
-    private final List<JenkinsSymbol> gdslSymbols;
 
 	// token types used in the legend (must match order below)
 	public static final List<String> TOKEN_TYPES = Collections.unmodifiableList(Arrays.asList(
@@ -51,9 +49,8 @@ public class SemanticTokensProvider {
 
 	private final ASTNodeVisitor astVisitor;
 
-	public SemanticTokensProvider(FileContentsTracker fileContentsTracker, List<JenkinsSymbol> gdslSymbols, ASTNodeVisitor astVisitor) {
+	public SemanticTokensProvider(FileContentsTracker fileContentsTracker, ASTNodeVisitor astVisitor) {
 		this.fileContentsTracker = fileContentsTracker;
-        this.gdslSymbols = gdslSymbols != null ? gdslSymbols : Collections.emptyList();
 		this.astVisitor = astVisitor;
 	}
 
@@ -87,8 +84,8 @@ public class SemanticTokensProvider {
 			processDeclaration(node, text, tokens, emitted);
 		}
 
-        // 3) GDSL symbols: find via AST MethodCallExpression nodes only
-        processGdslSymbols(uri, gdslSymbols, tokens);
+		// GDSL symbols are now injected as methods into ClassNodes and will be
+		// handled by processMethodCall above through normal method resolution
 
 		if (tokens.isEmpty()) {
 			return new SemanticTokens(new ArrayList<>());
@@ -97,51 +94,6 @@ public class SemanticTokensProvider {
 		tokens.sort(Comparator.comparingInt((Token t) -> t.line).thenComparingInt(t -> t.startChar));
 
 		return encodeDeltaTokens(tokens);
-	}
-
-	private void processGdslSymbols(URI uri, List<JenkinsSymbol> gdslSymbols, List<Token> tokens) {
-		// Guard 1: Ensure all required context objects are available
-		if (astVisitor == null || uri == null || gdslSymbols == null || gdslSymbols.isEmpty()) {
-			return;
-		}
-
-		// Extract valid GDSL symbol names
-		Set<String> gdslSymbolNames = new HashSet<>();
-		for (JenkinsSymbol s : gdslSymbols) {
-			if (s.name != null && !s.name.isEmpty()) {
-				gdslSymbolNames.add(s.name);
-			}
-		}
-		
-		// Guard 2: Nothing to search for if no valid symbol names exist
-		if (gdslSymbolNames.isEmpty()) {
-			return;
-		}
-
-		List<ASTNode> allNodes = astVisitor.getNodes(uri);
-		for (ASTNode node : allNodes) {
-			// Guard 3: We only care about MethodCallExpression nodes
-			if (!(node instanceof MethodCallExpression)) {
-				continue;
-			}
-
-			MethodCallExpression call = (MethodCallExpression) node;
-			String methodName = call.getMethodAsString();
-			
-			// Guard 4: Match method names against our GDSL symbol set
-			if (methodName == null || !gdslSymbolNames.contains(methodName)) {
-				continue;
-			}
-
-			Range range = GroovyLanguageServerUtils.astNodeToRange(call);
-			// Guard 5: Ensure we have a valid source range to map the token
-			if (range == null) {
-				continue;
-			}
-
-			Position pos = new Position(range.getStart().getLine(), range.getStart().getCharacter());
-			tokens.add(new Token(pos.line, pos.col, methodName.length(), tokenTypeIndex("function")));
-		}
 	}
 
 	private void processMethodCall(MethodCallExpression call, List<Token> tokens, Set<String> emitted) {

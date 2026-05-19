@@ -20,8 +20,6 @@
 package net.prominic.groovyls.providers;
 
 import java.net.URI;
-import java.util.Collections;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import org.codehaus.groovy.ast.ASTNode;
@@ -29,7 +27,6 @@ import org.codehaus.groovy.ast.AnnotatedNode;
 import org.codehaus.groovy.ast.ClassNode;
 import org.codehaus.groovy.ast.MethodNode;
 import org.codehaus.groovy.ast.Variable;
-import org.codehaus.groovy.ast.expr.MethodCallExpression;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.MarkupContent;
 import org.eclipse.lsp4j.MarkupKind;
@@ -40,21 +37,13 @@ import groovy.lang.groovydoc.Groovydoc;
 import net.prominic.groovyls.compiler.ast.ASTNodeVisitor;
 import net.prominic.groovyls.compiler.util.GroovyASTUtils;
 import net.prominic.groovyls.compiler.util.GroovydocUtils;
-import net.prominic.groovyls.gdsl.GdslSymbolsConverter;
-import net.prominic.groovyls.gdsl.JenkinsSymbol;
 import net.prominic.groovyls.util.GroovyNodeToStringUtils;
 
 public class HoverProvider {
 	private ASTNodeVisitor ast;
-	private List<JenkinsSymbol> gdslSymbols;
 
 	public HoverProvider(ASTNodeVisitor ast) {
-		this(ast, Collections.emptyList());
-	}
-
-	public HoverProvider(ASTNodeVisitor ast, List<JenkinsSymbol> gdslSymbols) {
 		this.ast = ast;
-		this.gdslSymbols = gdslSymbols != null ? gdslSymbols : Collections.emptyList();
 	}
 
 	public CompletableFuture<Hover> provideHover(TextDocumentIdentifier textDocument, Position position) {
@@ -72,23 +61,6 @@ public class HoverProvider {
 
 		ASTNode definitionNode = GroovyASTUtils.getDefinition(offsetNode, false, ast);
 		if (definitionNode == null) {
-			// Try to find GDSL symbol for method calls. Use enclosing MethodCallExpression
-			MethodCallExpression methodCall = null;
-			if (offsetNode instanceof MethodCallExpression) {
-				methodCall = (MethodCallExpression) offsetNode;
-			} else {
-				ASTNode enclosing = GroovyASTUtils.getEnclosingNodeOfType(offsetNode, MethodCallExpression.class, ast);
-				if (enclosing instanceof MethodCallExpression) {
-					methodCall = (MethodCallExpression) enclosing;
-				}
-			}
-			if (methodCall != null) {
-				String methodName = methodCall.getMethodAsString();
-				JenkinsSymbol gdslSymbol = findGdslSymbol(methodName);
-				if (gdslSymbol != null) {
-					return CompletableFuture.completedFuture(GdslSymbolsConverter.toHover(gdslSymbol));
-				}
-			}
 			return CompletableFuture.completedFuture(null);
 		}
 
@@ -133,15 +105,6 @@ public class HoverProvider {
 			return GroovyNodeToStringUtils.variableToString(varNode, ast);
 		} else {
 			System.err.println("*** hover not available for node: " + hoverNode);
-		}
-		return null;
-	}
-
-	private JenkinsSymbol findGdslSymbol(String name) {
-		for (JenkinsSymbol symbol : gdslSymbols) {
-			if (symbol.name.equals(name)) {
-				return symbol;
-			}
 		}
 		return null;
 	}
