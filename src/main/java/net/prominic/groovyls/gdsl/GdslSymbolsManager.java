@@ -174,6 +174,7 @@ public class GdslSymbolsManager {
 
         if (symbol.namedParams != null && !symbol.namedParams.isEmpty()) {
             for (Map<String, Object> paramMap : symbol.namedParams) {
+                // Fix namedParams 
                 String paramName = (String) paramMap.getOrDefault("name", "param");
                 ClassNode paramClassNode = new ClassNode(Object.class);
                 params.add(new Parameter(paramClassNode, paramName));
@@ -181,7 +182,23 @@ public class GdslSymbolsManager {
         } else if (symbol.params != null && !symbol.params.isEmpty()) {
             for (Map.Entry<String, Object> entry : symbol.params.entrySet()) {
                 String paramName = entry.getKey();
+                Object paramType = entry.getValue();
                 ClassNode paramClassNode = new ClassNode(Object.class);
+                if (paramType instanceof String) {
+                    String className = (String) paramType;
+                    // Unfortunately need to hardcode here since Jenkins-generated GDSL files
+                    // sometimes have unqualified types inside strings
+                    if (className.equals("Closure"))
+                        className = "groovy.lang.Closure";
+                    if (className.equals("Map"))
+                        className = "java.util.Map";
+                    try {
+                        paramClassNode = new ClassNode(Class.forName(className));
+                    } catch (ClassNotFoundException e) {
+                    }
+                } else if (paramType instanceof Class<?>) {
+                    paramClassNode = new ClassNode((Class<?>) paramType);
+                }
                 params.add(new Parameter(paramClassNode, paramName));
             }
         }
