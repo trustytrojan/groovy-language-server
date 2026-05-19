@@ -39,6 +39,8 @@ let extensionContext: vscode.ExtensionContext | null = null;
 let languageClient: LanguageClient | null = null;
 let javaPath: string | null = null;
 
+const channel = vscode.window.createOutputChannel('Groovy');
+
 function onDidChangeConfiguration(event: vscode.ConfigurationChangeEvent) {
   if (event.affectsConfiguration("groovy.java.home")) {
     javaPath = findJava();
@@ -132,6 +134,7 @@ function startLanguageServer() {
             //this is just the default behavior, but we need to define both
             protocol2Code: (value) => vscode.Uri.parse(value),
           },
+          outputChannel: channel
         };
         let args = [
           "-jar",
