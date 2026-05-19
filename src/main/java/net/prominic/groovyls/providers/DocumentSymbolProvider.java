@@ -31,12 +31,17 @@ import org.codehaus.groovy.ast.FieldNode;
 import org.codehaus.groovy.ast.MethodNode;
 import org.codehaus.groovy.ast.PropertyNode;
 import org.eclipse.lsp4j.DocumentSymbol;
+import org.eclipse.lsp4j.Location;
+import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.SymbolInformation;
+import org.eclipse.lsp4j.SymbolKind;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 
 import net.prominic.groovyls.compiler.ast.ASTNodeVisitor;
 import net.prominic.groovyls.compiler.util.GroovyASTUtils;
+import net.prominic.groovyls.gdsl.JenkinsSymbol;
 import net.prominic.groovyls.util.GroovyLanguageServerUtils;
 
 public class DocumentSymbolProvider {
@@ -90,15 +95,12 @@ public class DocumentSymbolProvider {
 
 		// Add GDSL symbols as DocumentSymbols (no precise range available; use start of document)
 		if (gdslSymbols != null && !gdslSymbols.isEmpty()) {
-			org.eclipse.lsp4j.Position start = new org.eclipse.lsp4j.Position(0, 0);
-			org.eclipse.lsp4j.Range zeroRange = new org.eclipse.lsp4j.Range(start, start);
-			for (net.prominic.groovyls.gdsl.JenkinsSymbol s : gdslSymbols) {
-				org.eclipse.lsp4j.DocumentSymbol ds = new org.eclipse.lsp4j.DocumentSymbol();
-				ds.setName(s.name);
-				ds.setKind(org.eclipse.lsp4j.SymbolKind.Function);
-				ds.setRange(zeroRange);
-				ds.setSelectionRange(zeroRange);
-				symbols.add(Either.<SymbolInformation, DocumentSymbol>forRight(ds));
+			Position start = new Position(0, 0);
+			Range zeroRange = new Range(start, start);
+			for (JenkinsSymbol s : gdslSymbols) {
+				SymbolInformation symbolInformation = new SymbolInformation(s.name,
+						SymbolKind.Function, new Location(uri.toString(), zeroRange));
+				symbols.add(Either.<SymbolInformation, DocumentSymbol>forLeft(symbolInformation));
 			}
 		}
 		return CompletableFuture.completedFuture(symbols);
