@@ -14,7 +14,7 @@ The original README continues below.
 
 # Groovy Language Server
 
-A [language server](https://microsoft.github.io/language-server-protocol/) for [Groovy](http://groovy-lang.org/).
+A [language server](https://microsoft.github.io/language-server-protocol/) for [Groovy](http://groovy-lang.org/). It is designed specifically for [Moonshine IDE](https://moonshine-ide.com), but it may work in other editors and environments.
 
 The following language server protocol requests are currently supported:
 
@@ -51,12 +51,12 @@ To run the language server, use the following command:
 java -jar groovy-language-server-all.jar
 ```
 
-Language server protocol messages are passed using standard I/O.
+Language server protocol messages are passed using standard I/O by default.
 
 ## Editors and IDEs
 
-A sample language extension for Visual Studio Code is available in the _vscode-extension_ directory. There are no plans to release this extension to the VSCode Marketplace at this time.
+A sample language extension for Visual Studio Code is available in the _vscode-extension_ directory. There are no plans to release this extension to the VSCode Marketplace.
 
-Instructions for setting up the language server in Sublime Text is available in the _sublime-text_ directory.
+Instructions for setting up the language server in Sublime Text is available in the _sublime-text_ directory. Configuring the language server in other editors will likely be very similar.
 
 Moonshine IDE natively provides a Grails project type that automatically configures the language server.
