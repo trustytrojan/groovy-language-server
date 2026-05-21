@@ -351,6 +351,11 @@ public class CompletionProvider {
 			if (markdownDocs != null) {
 				item.setDocumentation(new MarkupContent(MarkupKind.MARKDOWN, markdownDocs));
 			}
+			String detail = method.getReturnType().getNameWithoutPackage();
+			Boolean dgm = method.<Boolean>getNodeMetaData("dgm");
+			if (dgm != null && dgm)
+				detail += " (DGM)";
+			item.setDetail(detail);
 			return item;
 		}).collect(Collectors.toList());
 		items.addAll(methodItems);

@@ -35,16 +35,18 @@ public class JenkinsSymbol {
     public final List<Map<String, Object>> namedParams;
     public final Map<String, Object> params;
     public final boolean isNodeScoped;
+    public final boolean isProperty;
 
     public JenkinsSymbol(String name, String type, String doc, 
                          List<Map<String, Object>> namedParams, 
-                         Map<String, Object> params, boolean isNodeScoped) {
+                         Map<String, Object> params, boolean isNodeScoped, boolean isProperty) {
         this.name = name;
         this.type = type;
         this.doc = doc;
         this.namedParams = namedParams != null ? namedParams : new ArrayList<>();
         this.params = params;
         this.isNodeScoped = isNodeScoped;
+        this.isProperty = isProperty;
     }
 
     @Override

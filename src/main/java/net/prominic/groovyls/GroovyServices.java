@@ -20,15 +20,20 @@
 package net.prominic.groovyls;
 
 import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,17 +41,26 @@ import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
+import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.google.gson.stream.JsonWriter;
 
 import org.codehaus.groovy.GroovyBugError;
 import org.codehaus.groovy.ast.ASTNode;
+import org.codehaus.groovy.ast.ClassHelper;
+import org.codehaus.groovy.ast.ClassNode;
+import org.codehaus.groovy.ast.MethodNode;
+import org.codehaus.groovy.ast.Parameter;
 import org.codehaus.groovy.control.CompilationFailedException;
 import org.codehaus.groovy.control.ErrorCollector;
 import org.codehaus.groovy.control.Phases;
 import org.codehaus.groovy.control.messages.Message;
 import org.codehaus.groovy.control.messages.SyntaxErrorMessage;
+import org.codehaus.groovy.runtime.DefaultGroovyMethods;
 import org.codehaus.groovy.syntax.SyntaxException;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionList;
@@ -87,8 +101,26 @@ import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.LanguageClientAware;
 import org.eclipse.lsp4j.services.TextDocumentService;
 import org.eclipse.lsp4j.services.WorkspaceService;
+import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
+import org.eclipse.aether.DefaultRepositorySystemSession;
+import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.artifact.Artifact;
+import org.eclipse.aether.artifact.DefaultArtifact;
+import org.eclipse.aether.collection.CollectRequest;
+import org.eclipse.aether.connector.basic.BasicRepositoryConnectorFactory;
+import org.eclipse.aether.graph.Dependency;
+import org.eclipse.aether.impl.DefaultServiceLocator;
+import org.eclipse.aether.repository.LocalRepository;
+import org.eclipse.aether.repository.RemoteRepository;
+import org.eclipse.aether.resolution.ArtifactResult;
+import org.eclipse.aether.resolution.DependencyRequest;
+import org.eclipse.aether.resolution.DependencyResult;
+import org.eclipse.aether.spi.connector.RepositoryConnectorFactory;
+import org.eclipse.aether.spi.connector.transport.TransporterFactory;
+import org.eclipse.aether.transport.http.HttpTransporterFactory;
 
 import groovy.lang.GroovyClassLoader;
+import groovyjarjarasm.asm.Opcodes;
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ClassGraphException;
 import io.github.classgraph.ScanResult;
@@ -264,7 +296,7 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 
 		CompletableFuture<Either<List<CompletionItem>, CompletionList>> result = null;
 		try {
-		CompletionProvider provider = new CompletionProvider(astVisitor, classGraphScanResult);
+			CompletionProvider provider = new CompletionProvider(astVisitor, classGraphScanResult);
 			result = provider.provideCompletion(params.getTextDocument(), params.getPosition(), params.getContext());
 		} finally {
 			if (originalSource != null) {
@@ -397,13 +429,141 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 
 	// --- INTERNAL
 
+	/**
+	 * Resolves a Maven package using the user's home ~/.m2 repository and returns a
+	 * list of absolute JAR paths.
+	 */
+	public static List<String> downloadToDefaultM2(String coords, String remoteRepoUrl) throws Exception {
+		// 1. Initialize engines
+		DefaultServiceLocator locator = MavenRepositorySystemUtils.newServiceLocator();
+		locator.addService(RepositoryConnectorFactory.class, BasicRepositoryConnectorFactory.class);
+		locator.addService(TransporterFactory.class, HttpTransporterFactory.class);
+		RepositorySystem system = locator.getService(RepositorySystem.class);
+
+		// 2. Point strictly to the global user home ~/.m2/repository across all OS
+		// environments
+		DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+		File m2Home = new File(System.getProperty("user.home"), ".m2/repository");
+		LocalRepository localRepo = new LocalRepository(m2Home);
+		session.setLocalRepositoryManager(system.newLocalRepositoryManager(session, localRepo));
+
+		// 3. Define artifact details
+		Artifact artifact = new DefaultArtifact(coords);
+		Dependency dependency = new Dependency(artifact, "runtime");
+		RemoteRepository remoteRepo = new RemoteRepository.Builder("custom-repo", "default", remoteRepoUrl).build();
+
+		// 4. Assemble requests
+		CollectRequest collectRequest = new CollectRequest();
+		collectRequest.setRoot(dependency);
+		collectRequest.setRepositories(Collections.singletonList(remoteRepo));
+
+		DependencyRequest dependencyRequest = new DependencyRequest();
+		dependencyRequest.setCollectRequest(collectRequest);
+
+		System.out.println("Checking / Resolving " + coords + " from " + remoteRepoUrl);
+		DependencyResult result = system.resolveDependencies(session, dependencyRequest);
+
+		// 5. Gather and return absolute paths for found runtime JAR files
+		return result.getArtifactResults().stream()
+				.map(ArtifactResult::getArtifact)
+				.map(a -> a.getFile().getAbsolutePath())
+				.filter(path -> path.endsWith(".jar"))
+				.collect(Collectors.toList());
+	}
+
+	public static void updateVscodeSettings(Collection<String> jarPaths) {
+		Path settingsPath = Paths.get(".vscode", "settings.json");
+		File settingsFile = settingsPath.toFile();
+
+		JsonObject rootObject;
+
+		try {
+			// 1. Ensure directories exist
+			Files.createDirectories(settingsPath.getParent());
+
+			// 2. Read existing file or initialize a clean JSON object container
+			if (settingsFile.exists() && settingsFile.length() > 0) {
+				try (FileReader reader = new FileReader(settingsFile)) {
+					rootObject = JsonParser.parseReader(reader).getAsJsonObject();
+				} catch (Exception e) {
+					// Fallback if file is corrupted or invalid JSON format
+					rootObject = new JsonObject();
+				}
+			} else {
+				rootObject = new JsonObject();
+			}
+
+			// 3. Build up the structured JSON Array natively
+			JsonArray classpathArray = new JsonArray();
+			classpathArray.add(".");
+			for (String path : jarPaths) {
+				classpathArray.add(path); // GSON handles backslash escaping internally!
+			}
+
+			// 4. Safely set or overwrite the property key context
+			rootObject.add("groovy.classpath", classpathArray);
+
+			// 5. Serialize back down to disk unformatted
+			// (Use new GsonBuilder().setPrettyPrinting().create() if you want it pretty!)
+			Gson gson = new Gson();
+			try (JsonWriter jsonWriter = new JsonWriter(new FileWriter(settingsFile))) {
+				jsonWriter.setIndent("\t");
+				gson.toJson(rootObject, jsonWriter);
+			}
+
+			System.out.println("Successfully integrated classpath map into .vscode/settings.json via GSON.");
+
+		} catch (IOException e) {
+			System.err.println("GSON file interaction failure: " + e.getMessage());
+		}
+	}
+
 	private void visitAST() {
 		if (compilationUnit == null) {
 			return;
 		}
 		astVisitor = new ASTNodeVisitor();
 		astVisitor.visitCompilationUnit(compilationUnit);
-		
+
+		// Use a LinkedHashSet to eliminate duplicate dependencies across downstream
+		// definitions
+		Set<String> allJarPaths = new HashSet<>();
+		String jenkinsRepo = "https://repo.jenkins-ci.org/releases/";
+
+		try {
+			allJarPaths.addAll(downloadToDefaultM2(
+					"org.jenkinsci.plugins:pipeline-model-definition:1.9.3", jenkinsRepo));
+			allJarPaths.addAll(downloadToDefaultM2("org.kohsuke.stapler:stapler:1.178", jenkinsRepo));
+			allJarPaths.addAll(downloadToDefaultM2("org.jenkins-ci.main:jenkins-core:2.289.3", jenkinsRepo));
+
+			// Inject paths directly into settings.json properties
+			updateVscodeSettings(allJarPaths);
+
+		} catch (Exception e) {
+			System.err.println("Failed programmatic dependency resolution step.");
+			e.printStackTrace();
+		}
+
+		for (Class<?> dgmClass : DefaultGroovyMethods.DGM_LIKE_CLASSES) {
+			for (Method method : dgmClass.getMethods()) {
+				if (method.getParameterCount() == 0)
+					continue;
+				Class<?> firstParameterType = method.getParameterTypes()[0];
+				if (firstParameterType == Object.class) {
+					MethodNode mn = ClassHelper.OBJECT_TYPE.addMethod(
+							method.getName(),
+							Opcodes.ACC_PUBLIC,
+							ClassHelper.make(method.getReturnType()),
+							Stream.of(method.getParameters()).skip(1)
+									.map(p -> new Parameter(ClassHelper.make(p.getType()), p.getName()))
+									.toArray(Parameter[]::new),
+							Stream.of(method.getExceptionTypes()).map(ClassHelper::make).toArray(ClassNode[]::new),
+							null);
+					mn.putNodeMetaData("dgm", true);
+				}
+			}
+		}
+
 		// Inject GDSL symbols as methods into ClassNodes so they're available
 		// through normal AST queries in providers
 		gdslSymbolsManager.injectGdslSymbolsIntoClassNodes(astVisitor.getClassNodes());
@@ -418,7 +578,7 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 			return;
 		}
 		astVisitor.visitCompilationUnit(compilationUnit, uris);
-		
+
 		// Inject GDSL symbols as methods into ClassNodes so they're available
 		// through normal AST queries in providers
 		gdslSymbolsManager.injectGdslSymbolsIntoClassNodes(astVisitor.getClassNodes());

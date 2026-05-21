@@ -122,7 +122,8 @@ public class JenkinsGdslParser {
                                 (String) args.get("doc"),
                                 (List<Map<String, Object>>) args.get("namedParams"),
                                 (Map<String, Object>) args.get("params"),
-                                finalIsNodeCtx
+                                finalIsNodeCtx,
+                                false
                         );
                         extractedSymbols.add(symbol);
                         return null;
@@ -134,10 +135,11 @@ public class JenkinsGdslParser {
                         JenkinsSymbol symbol = new JenkinsSymbol(
                                 (String) args.get("name"),
                                 (String) args.get("type"),
-                                "Property definition",
+                                "",
                                 null,
                                 null,
-                                finalIsNodeCtx
+                                finalIsNodeCtx,
+                                true
                         );
                         extractedSymbols.add(symbol);
                         return null;

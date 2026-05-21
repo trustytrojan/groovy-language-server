@@ -29,11 +29,15 @@ import java.util.List;
 import java.util.Map;
 
 import org.codehaus.groovy.ast.AnnotatedNode;
+import org.codehaus.groovy.ast.ClassHelper;
 import org.codehaus.groovy.ast.ClassNode;
+import org.codehaus.groovy.ast.FieldNode;
 import org.codehaus.groovy.ast.MethodNode;
 import org.codehaus.groovy.ast.Parameter;
+import org.codehaus.groovy.ast.PropertyNode;
 
 import groovy.lang.groovydoc.Groovydoc;
+import groovyjarjarasm.asm.Opcodes;
 
 /**
  * Manages GDSL symbol loading and caching for the language server.
@@ -119,12 +123,15 @@ public class GdslSymbolsManager {
         }
 
         for (ClassNode classNode : classNodes) {
-            // Only inject GDSL symbols into ClassNodes from Groovy source files
-            // Check if this is a primary class node (being compiled as Groovy source)
-            if (classNode.isScript()) {
-                for (JenkinsSymbol symbol : cachedSymbols) {
+            if (!classNode.isScript()) {
+                continue;
+            }
+
+            for (JenkinsSymbol symbol : cachedSymbols) {
+                if (symbol.isProperty)
+                    injectSymbolAsProperty(classNode, symbol);
+                else
                     injectSymbolAsMethod(classNode, symbol);
-                }
             }
         }
     }
@@ -144,12 +151,11 @@ public class GdslSymbolsManager {
         Parameter[] params = convertParameters(symbol);
         MethodNode methodNode = new MethodNode(
                 symbol.name,
-                9, // ACC_PUBLIC (1) | ACC_STATIC (8) modifiers
-                new ClassNode(Object.class), // Use Object.class for return type
+                0,
+                ClassHelper.make(symbol.type),
                 params,
                 new ClassNode[0],
-                null // body can be null for synthetic nodes
-        );
+                null);
 
         // Mark as synthetic so it doesn't appear in regular code completion
         methodNode.setSynthetic(true);
@@ -167,6 +173,42 @@ public class GdslSymbolsManager {
     }
 
     /**
+     * Creates a synthetic property (field + property node) from a JenkinsSymbol
+     * and adds it to a ClassNode. Includes documentation from the symbol if
+     * available.
+     */
+    private void injectSymbolAsProperty(ClassNode classNode, JenkinsSymbol symbol) {
+        // Check if property or field already exists to avoid duplicates
+        if (classNode.getProperty(symbol.name) != null || classNode.getField(symbol.name) != null) {
+            return;
+        }
+
+        // Create synthetic field node
+        FieldNode fieldNode = new FieldNode(
+                symbol.name,
+                0,
+                ClassHelper.make(symbol.type),
+                classNode,
+                null);
+
+        fieldNode.setSynthetic(true);
+
+        // Add documentation if available from the GDSL symbol
+        if (symbol.doc != null && !symbol.doc.isEmpty()) {
+            Groovydoc groovydoc = new Groovydoc("/** " + symbol.doc + " */", fieldNode);
+            fieldNode.putNodeMetaData(AnnotatedNode.DOC_COMMENT, groovydoc);
+        }
+
+        // Add field to the class
+        classNode.addField(fieldNode);
+
+        // Also add a PropertyNode so the field behaves like a Groovy property
+        PropertyNode prop = new PropertyNode(fieldNode, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, null, null);
+        prop.setSynthetic(true);
+        classNode.addProperty(prop);
+    }
+
+    /**
      * Converts JenkinsSymbol parameters to Groovy Parameter array.
      */
     private Parameter[] convertParameters(JenkinsSymbol symbol) {
@@ -174,7 +216,7 @@ public class GdslSymbolsManager {
 
         if (symbol.namedParams != null && !symbol.namedParams.isEmpty()) {
             for (Map<String, Object> paramMap : symbol.namedParams) {
-                // Fix namedParams 
+                // TODO: Fix namedParams
                 String paramName = (String) paramMap.getOrDefault("name", "param");
                 ClassNode paramClassNode = new ClassNode(Object.class);
                 params.add(new Parameter(paramClassNode, paramName));
@@ -183,7 +225,7 @@ public class GdslSymbolsManager {
             for (Map.Entry<String, Object> entry : symbol.params.entrySet()) {
                 String paramName = entry.getKey();
                 Object paramType = entry.getValue();
-                ClassNode paramClassNode = new ClassNode(Object.class);
+                ClassNode paramClassNode;
                 if (paramType instanceof String) {
                     String className = (String) paramType;
                     // Unfortunately need to hardcode here since Jenkins-generated GDSL files
@@ -192,12 +234,11 @@ public class GdslSymbolsManager {
                         className = "groovy.lang.Closure";
                     if (className.equals("Map"))
                         className = "java.util.Map";
-                    try {
-                        paramClassNode = new ClassNode(Class.forName(className));
-                    } catch (ClassNotFoundException e) {
-                    }
+                    paramClassNode = ClassHelper.make(className);
                 } else if (paramType instanceof Class<?>) {
-                    paramClassNode = new ClassNode((Class<?>) paramType);
+                    paramClassNode = ClassHelper.make((Class<?>) paramType);
+                } else {
+                    paramClassNode = ClassHelper.OBJECT_TYPE;
                 }
                 params.add(new Parameter(paramClassNode, paramName));
             }

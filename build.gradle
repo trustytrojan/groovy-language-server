@@ -39,6 +39,19 @@ dependencies {
   testImplementation "org.junit.jupiter:junit-jupiter-api:5.11.4"
   testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:5.11.4"
   testRuntimeOnly "org.junit.platform:junit-platform-launcher:1.14.1"
+
+  // Core Maven Resolver API and utilities
+  implementation 'org.apache.maven.resolver:maven-resolver-api:1.9.18'
+  implementation 'org.apache.maven.resolver:maven-resolver-spi:1.9.18'
+  implementation 'org.apache.maven.resolver:maven-resolver-util:1.9.18'
+  implementation 'org.apache.maven.resolver:maven-resolver-impl:1.9.18'
+  
+  // Connectors and Transports (Required to talk to HTTP repositories like Maven Central)
+  implementation 'org.apache.maven.resolver:maven-resolver-connector-basic:1.9.18'
+  implementation 'org.apache.maven.resolver:maven-resolver-transport-http:1.9.18'
+  
+  // The bridge provider that allows Resolver to understand Maven POM file layouts
+  implementation 'org.apache.maven:maven-resolver-provider:3.9.6'
 }
 
 // assuming that Moonshine-IDE is checked out in a folder that has the same
