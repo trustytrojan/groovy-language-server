@@ -36,6 +36,7 @@ import org.codehaus.groovy.ast.FieldNode;
 import org.codehaus.groovy.ast.ImportNode;
 import org.codehaus.groovy.ast.MethodNode;
 import org.codehaus.groovy.ast.ModuleNode;
+import org.codehaus.groovy.ast.Parameter;
 import org.codehaus.groovy.ast.PropertyNode;
 import org.codehaus.groovy.ast.VariableScope;
 import org.codehaus.groovy.ast.expr.ConstructorCallExpression;
@@ -48,6 +49,7 @@ import org.codehaus.groovy.ast.stmt.Statement;
 import org.eclipse.lsp4j.CompletionContext;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
+import org.eclipse.lsp4j.CompletionItemLabelDetails;
 import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.MarkupContent;
 import org.eclipse.lsp4j.MarkupKind;
@@ -309,6 +311,9 @@ public class CompletionProvider {
 			if (markdownDocs != null) {
 				item.setDocumentation(new MarkupContent(MarkupKind.MARKDOWN, markdownDocs));
 			}
+			CompletionItemLabelDetails labelDetails = new CompletionItemLabelDetails();
+			labelDetails.setDescription(property.getType().getNameWithoutPackage());
+			item.setLabelDetails(labelDetails);
 			return item;
 		}).collect(Collectors.toList());
 		items.addAll(propItems);
@@ -328,6 +333,9 @@ public class CompletionProvider {
 			if (markdownDocs != null) {
 				item.setDocumentation(new MarkupContent(MarkupKind.MARKDOWN, markdownDocs));
 			}
+			CompletionItemLabelDetails labelDetails = new CompletionItemLabelDetails();
+			labelDetails.setDescription(field.getType().getNameWithoutPackage());
+			item.setLabelDetails(labelDetails);
 			return item;
 		}).collect(Collectors.toList());
 		items.addAll(fieldItems);
@@ -346,6 +354,17 @@ public class CompletionProvider {
 		}).map(method -> {
 			CompletionItem item = new CompletionItem();
 			item.setLabel(method.getName());
+			String methodParams = "(";
+			for (Parameter p : method.getParameters()) {
+				methodParams += p.getType().getNameWithoutPackage() + ' ' + p.getName() + ", ";
+			}
+			if (!methodParams.equals("("))
+				methodParams = methodParams.substring(0, methodParams.length() - 2);
+			methodParams += ')';
+			CompletionItemLabelDetails labelDetails = new CompletionItemLabelDetails();
+			labelDetails.setDetail(methodParams);
+			labelDetails.setDescription(method.getReturnType().getNameWithoutPackage());
+			item.setLabelDetails(labelDetails);
 			item.setKind(GroovyLanguageServerUtils.astNodeToCompletionItemKind(method));
 			String markdownDocs = GroovydocUtils.groovydocToMarkdownDescription(method.getGroovydoc());
 			if (markdownDocs != null) {
