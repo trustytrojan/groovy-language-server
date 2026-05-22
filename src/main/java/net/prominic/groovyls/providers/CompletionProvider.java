@@ -46,6 +46,7 @@ import org.codehaus.groovy.ast.expr.PropertyExpression;
 import org.codehaus.groovy.ast.expr.VariableExpression;
 import org.codehaus.groovy.ast.stmt.BlockStatement;
 import org.codehaus.groovy.ast.stmt.Statement;
+import org.codehaus.groovy.runtime.DefaultGroovyMethods;
 import org.eclipse.lsp4j.CompletionContext;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
@@ -66,6 +67,7 @@ import net.prominic.groovyls.compiler.ast.ASTNodeVisitor;
 import net.prominic.groovyls.compiler.util.GroovyASTUtils;
 import net.prominic.groovyls.compiler.util.GroovydocUtils;
 import net.prominic.groovyls.util.GroovyLanguageServerUtils;
+import net.prominic.groovyls.util.GroovyNodeToStringUtils;
 
 public class CompletionProvider {
 	private ASTNodeVisitor ast;
@@ -363,18 +365,16 @@ public class CompletionProvider {
 			methodParams += ')';
 			CompletionItemLabelDetails labelDetails = new CompletionItemLabelDetails();
 			labelDetails.setDetail(methodParams);
-			labelDetails.setDescription(method.getReturnType().getNameWithoutPackage());
+			String description = method.getReturnType().getNameWithoutPackage();
+			if (DefaultGroovyMethods.asBoolean(method.<Boolean>getNodeMetaData("dgm")))
+				description += " (DGM)";
+			labelDetails.setDescription(description);
 			item.setLabelDetails(labelDetails);
 			item.setKind(GroovyLanguageServerUtils.astNodeToCompletionItemKind(method));
 			String markdownDocs = GroovydocUtils.groovydocToMarkdownDescription(method.getGroovydoc());
 			if (markdownDocs != null) {
 				item.setDocumentation(new MarkupContent(MarkupKind.MARKDOWN, markdownDocs));
 			}
-			String detail = method.getReturnType().getNameWithoutPackage();
-			Boolean dgm = method.<Boolean>getNodeMetaData("dgm");
-			if (dgm != null && dgm)
-				detail += " (DGM)";
-			item.setDetail(detail);
 			return item;
 		}).collect(Collectors.toList());
 		items.addAll(methodItems);
