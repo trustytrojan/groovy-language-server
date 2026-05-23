@@ -117,7 +117,7 @@ public class GdslSymbolsManager {
      * 
      * @param classNodes collection of ClassNodes to potentially inject symbols into
      */
-    public void injectGdslSymbolsIntoClassNodes(Collection<ClassNode> classNodes) {
+    public void injectGdslSymbolsIntoClassNodes(Collection<ClassNode> classNodes, ClassLoader cl) {
         if (cachedSymbols.isEmpty() || classNodes.isEmpty()) {
             return;
         }
@@ -129,7 +129,7 @@ public class GdslSymbolsManager {
 
             for (JenkinsSymbol symbol : cachedSymbols) {
                 if (symbol.isProperty)
-                    injectSymbolAsProperty(classNode, symbol);
+                    injectSymbolAsProperty(classNode, symbol, cl);
                 else
                     injectSymbolAsMethod(classNode, symbol);
             }
@@ -177,9 +177,17 @@ public class GdslSymbolsManager {
      * and adds it to a ClassNode. Includes documentation from the symbol if
      * available.
      */
-    private void injectSymbolAsProperty(ClassNode classNode, JenkinsSymbol symbol) {
+    private void injectSymbolAsProperty(ClassNode classNode, JenkinsSymbol symbol, ClassLoader cl) {
         // Check if property or field already exists to avoid duplicates
         if (classNode.getProperty(symbol.name) != null || classNode.getField(symbol.name) != null) {
+            return;
+        }
+
+        Class<?> clazz;
+        try {
+            clazz = cl.loadClass(symbol.type);
+        } catch (ClassNotFoundException e) {
+            System.err.println("Could not find class: " + e.getMessage());
             return;
         }
 
@@ -187,7 +195,7 @@ public class GdslSymbolsManager {
         FieldNode fieldNode = new FieldNode(
                 symbol.name,
                 0,
-                ClassHelper.make(symbol.type),
+                ClassHelper.make(clazz),
                 classNode,
                 null);
 
@@ -203,9 +211,9 @@ public class GdslSymbolsManager {
         classNode.addField(fieldNode);
 
         // Also add a PropertyNode so the field behaves like a Groovy property
-        PropertyNode prop = new PropertyNode(fieldNode, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, null, null);
-        prop.setSynthetic(true);
-        classNode.addProperty(prop);
+        // PropertyNode prop = new PropertyNode(fieldNode, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, null, null);
+        // prop.setSynthetic(true);
+        // classNode.addProperty(prop);
     }
 
     /**

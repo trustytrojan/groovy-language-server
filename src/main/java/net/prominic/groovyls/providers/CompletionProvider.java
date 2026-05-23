@@ -31,6 +31,7 @@ import java.util.stream.Collectors;
 
 import org.codehaus.groovy.ast.ASTNode;
 import org.codehaus.groovy.ast.AnnotatedNode;
+import org.codehaus.groovy.ast.ClassHelper;
 import org.codehaus.groovy.ast.ClassNode;
 import org.codehaus.groovy.ast.FieldNode;
 import org.codehaus.groovy.ast.ImportNode;
@@ -41,6 +42,7 @@ import org.codehaus.groovy.ast.PropertyNode;
 import org.codehaus.groovy.ast.VariableScope;
 import org.codehaus.groovy.ast.expr.ConstructorCallExpression;
 import org.codehaus.groovy.ast.expr.Expression;
+import org.codehaus.groovy.ast.expr.FieldExpression;
 import org.codehaus.groovy.ast.expr.MethodCallExpression;
 import org.codehaus.groovy.ast.expr.PropertyExpression;
 import org.codehaus.groovy.ast.expr.VariableExpression;
@@ -129,12 +131,29 @@ public class CompletionProvider {
 
 	private void populateItemsFromPropertyExpression(PropertyExpression propExpr, Position position,
 			List<CompletionItem> items) {
+		Expression objExpr = propExpr.getObjectExpression();
+		if (objExpr.getType().equals(ClassHelper.OBJECT_TYPE)) {
+			// This might be a field/property of the script class,
+			// so let's look for it and replace objExpr with it.
+			ASTNode current = propExpr;
+			while ((current = ast.getParent(current)) != null) {
+				if (!(current instanceof ClassNode))
+					continue;
+
+				FieldNode fn = ((ClassNode) current).getField(objExpr.getText());
+				if (fn == null)
+					break;
+
+				objExpr = new FieldExpression(fn);
+				break;
+			}
+		}
 		Range propertyRange = GroovyLanguageServerUtils.astNodeToRange(propExpr.getProperty());
 		if (propertyRange == null) {
 			return;
 		}
 		String memberName = getMemberName(propExpr.getPropertyAsString(), propertyRange, position);
-		populateItemsFromExpression(propExpr.getObjectExpression(), memberName, items);
+		populateItemsFromExpression(objExpr, memberName, items);
 	}
 
 	private void populateItemsFromMethodCallExpression(MethodCallExpression methodCallExpr, Position position,

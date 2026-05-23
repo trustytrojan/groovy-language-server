@@ -519,6 +519,7 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 		}
 	}
 
+	// This is only called once on LS startup (only time when astVisitor is null).
 	private void visitAST() {
 		if (compilationUnit == null) {
 			return;
@@ -526,6 +527,31 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 		astVisitor = new ASTNodeVisitor();
 		astVisitor.visitCompilationUnit(compilationUnit);
 
+		installJenkinsGDSLDependencies();
+		injectDefaultGroovyMethods();
+
+		// Inject GDSL symbols as methods into ClassNodes so they're available
+		// through normal AST queries in providers
+		gdslSymbolsManager.injectGdslSymbolsIntoClassNodes(astVisitor.getClassNodes(), compilationUnit.getClassLoader());
+	}
+
+	// This is run on EVERY CHANGE to EVERY GROOVY FILE in the workspace.
+	private void visitAST(Set<URI> uris) {
+		if (astVisitor == null) {
+			visitAST();
+			return;
+		}
+		if (compilationUnit == null) {
+			return;
+		}
+		astVisitor.visitCompilationUnit(compilationUnit, uris);
+
+		// Inject GDSL symbols as methods into ClassNodes so they're available
+		// through normal AST queries in providers
+		gdslSymbolsManager.injectGdslSymbolsIntoClassNodes(astVisitor.getClassNodes(), compilationUnit.getClassLoader());
+	}
+
+	private void installJenkinsGDSLDependencies() {
 		// Use a LinkedHashSet to eliminate duplicate dependencies across downstream
 		// definitions
 		Set<String> allJarPaths = new HashSet<>();
@@ -544,7 +570,9 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 			System.err.println("Failed programmatic dependency resolution step.");
 			e.printStackTrace();
 		}
+	}
 
+	private void injectDefaultGroovyMethods() {
 		for (Class<?> dgmClass : DefaultGroovyMethods.DGM_LIKE_CLASSES) {
 			for (Method method : dgmClass.getMethods()) {
 				if (method.getParameterCount() == 0)
@@ -564,25 +592,6 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 				}
 			}
 		}
-
-		// Inject GDSL symbols as methods into ClassNodes so they're available
-		// through normal AST queries in providers
-		gdslSymbolsManager.injectGdslSymbolsIntoClassNodes(astVisitor.getClassNodes());
-	}
-
-	private void visitAST(Set<URI> uris) {
-		if (astVisitor == null) {
-			visitAST();
-			return;
-		}
-		if (compilationUnit == null) {
-			return;
-		}
-		astVisitor.visitCompilationUnit(compilationUnit, uris);
-
-		// Inject GDSL symbols as methods into ClassNodes so they're available
-		// through normal AST queries in providers
-		gdslSymbolsManager.injectGdslSymbolsIntoClassNodes(astVisitor.getClassNodes());
 	}
 
 	private boolean createOrUpdateCompilationUnit() {
