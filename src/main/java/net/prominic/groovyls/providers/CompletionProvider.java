@@ -385,6 +385,9 @@ public class CompletionProvider {
 			CompletionItem item = new CompletionItem();
 			item.setLabel(variable.getName());
 			item.setKind(GroovyLanguageServerUtils.astNodeToCompletionItemKind((ASTNode) variable));
+			CompletionItemLabelDetails labelDetails = new CompletionItemLabelDetails();
+			labelDetails.setDescription(variable.getType().getNameWithoutPackage());
+			item.setLabelDetails(labelDetails);
 			if (variable instanceof AnnotatedNode) {
 				AnnotatedNode annotatedVar = (AnnotatedNode) variable;
 				String markdownDocs = GroovydocUtils.groovydocToMarkdownDescription(annotatedVar.getGroovydoc());
@@ -456,7 +459,9 @@ public class CompletionProvider {
 			CompletionItem item = new CompletionItem();
 			item.setLabel(classNode.getNameWithoutPackage());
 			item.setKind(GroovyLanguageServerUtils.astNodeToCompletionItemKind(classNode));
-			item.setDetail(packageName);
+			CompletionItemLabelDetails labelDetails = new CompletionItemLabelDetails();
+			labelDetails.setDescription(packageName);
+			item.setLabelDetails(labelDetails);
 			String markdownDocs = GroovydocUtils.groovydocToMarkdownDescription(classNode.getGroovydoc());
 			if (markdownDocs != null) {
 				item.setDocumentation(new MarkupContent(MarkupKind.MARKDOWN, markdownDocs));
@@ -496,8 +501,10 @@ public class CompletionProvider {
 			String packageName = classInfo.getPackageName();
 			CompletionItem item = new CompletionItem();
 			item.setLabel(classInfo.getSimpleName());
-			item.setDetail(packageName);
 			item.setKind(classInfoToCompletionItemKind(classInfo));
+			CompletionItemLabelDetails labelDetails = new CompletionItemLabelDetails();
+			labelDetails.setDescription(packageName);
+			item.setLabelDetails(labelDetails);
 			if (packageName != null && !packageName.equals(enclosingPackageName) && !importNames.contains(className)) {
 				List<TextEdit> additionalTextEdits = new ArrayList<>();
 				TextEdit addImportEdit = createAddImportTextEdit(className, addImportRange);
