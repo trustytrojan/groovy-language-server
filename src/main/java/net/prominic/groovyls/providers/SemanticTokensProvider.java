@@ -20,6 +20,7 @@ import org.codehaus.groovy.ast.ASTNode;
 import org.codehaus.groovy.ast.MethodNode;
 import org.codehaus.groovy.ast.Variable;
 import org.codehaus.groovy.ast.FieldNode;
+import org.codehaus.groovy.ast.ImportNode;
 import org.codehaus.groovy.ast.PropertyNode;
 import org.codehaus.groovy.ast.Parameter;
 import org.codehaus.groovy.ast.expr.ClassExpression;
@@ -147,6 +148,7 @@ public class SemanticTokensProvider {
 		}
 	}
 
+	// probably should be named `processSymbol` and/or should be split up by type a bit more
 	private void processDeclaration(ASTNode node, String text, List<Token> tokens, Set<String> emitted) {
 		Range range = GroovyLanguageServerUtils.astNodeToRange(node);
 		if (range == null) return;
@@ -167,11 +169,19 @@ public class SemanticTokensProvider {
 		if (found == -1) return;
 
 		Position pos = toLineCol(text, found);
-		int tokenType = (node instanceof MethodNode) ? tokenTypeIndex("function") : tokenTypeIndex("variable");
+		int tokenType = tokenTypeIndexFromNode(node);
 		String key = pos.line + ":" + pos.col + ":" + name + ":" + tokenType;
 		if (emitted.add(key)) {
 			tokens.add(new Token(pos.line, pos.col, name.length(), tokenType));
 		}
+	}
+
+	private int tokenTypeIndexFromNode(ASTNode node) {
+		if (node instanceof MethodNode)
+			return tokenTypeIndex("function");
+		if (node instanceof ClassNode || node instanceof ImportNode)
+			return tokenTypeIndex("class");
+		return tokenTypeIndex("variable");
 	}
 
 	private void processConstructorDeclaration(MethodNode mn, String text, Range range, List<Token> tokens, Set<String> emitted) {
@@ -199,6 +209,8 @@ public class SemanticTokensProvider {
 		if (node instanceof FieldNode) return ((FieldNode) node).getName();
 		if (node instanceof PropertyNode) return ((PropertyNode) node).getName();
 		if (node instanceof Parameter) return ((Parameter) node).getName();
+		if (node instanceof ClassNode) return ((ClassNode) node).getName();
+		if (node instanceof ImportNode) return ((ImportNode) node).getClassName();
 		return null;
 	}
 
