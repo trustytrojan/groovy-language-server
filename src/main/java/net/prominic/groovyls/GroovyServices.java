@@ -461,7 +461,7 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 		// 3. Define artifact details
 		Artifact artifact = new DefaultArtifact(coords);
 		Dependency dependency = new Dependency(artifact, "runtime");
-		RemoteRepository remoteRepo = new RemoteRepository.Builder(null, null, remoteRepoUrl).build();
+		RemoteRepository remoteRepo = new RemoteRepository.Builder("custom-repo", "default", remoteRepoUrl).build();
 
 		// 4. Assemble requests
 		CollectRequest collectRequest = new CollectRequest();
