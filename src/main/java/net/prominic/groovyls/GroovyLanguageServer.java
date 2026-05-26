@@ -99,7 +99,9 @@ public class GroovyLanguageServer implements LanguageServer, LanguageClientAware
 
         // Register semantic tokens provider for full document tokenization
         SemanticTokensWithRegistrationOptions semanticTokensOptions = new SemanticTokensWithRegistrationOptions();
-        semanticTokensOptions.setLegend(new SemanticTokensLegend(SemanticTokensProvider.TOKEN_TYPES, Collections.emptyList()));
+        semanticTokensOptions.setLegend(new SemanticTokensLegend(
+                SemanticTokensProvider.TOKEN_TYPES,
+                Collections.emptyList()));
         semanticTokensOptions.setFull(true);
         serverCapabilities.setSemanticTokensProvider(semanticTokensOptions);
 
