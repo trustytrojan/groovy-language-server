@@ -464,8 +464,10 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 		LocalRepository localRepo = new LocalRepository(m2Home);
 		session.setLocalRepositoryManager(system.newLocalRepositoryManager(session, localRepo));
 
-		// Fix org.jenkins-ci.plugins:artifactory:4.0.8 depending on org.codehaus.groovy:groovy-all:jar:3.0.13
-		// by excluding it, and instead using org.codehaus.groovy:groovy:5.0.6 directly.
+		// Fix org.jenkins-ci.plugins:artifactory depending on the JAR artifact of
+		// org.codehaus.groovy:groovy-all by excluding it.
+		// In your `groovy.dependencies` I recommend installing org.apache.groovy:groovy
+		// instead
 		Exclusion groovyAllExclusion = new Exclusion("org.codehaus.groovy", "groovy-all", "*", "*");
 		DependencySelector customExclusion = new ExclusionDependencySelector(Collections.singleton(groovyAllExclusion));
 
@@ -492,10 +494,7 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 
 		// 5. Gather and return absolute paths for found runtime JAR files safely
 		return result.getArtifactResults().stream()
-				.map(a -> a.getArtifact().getFile())
-				.filter(Objects::nonNull) // Safe check to prevent NullPointerException on POM-only items if any slip
-											// through
-				.map(File::getAbsolutePath)
+				.map(a -> a.getArtifact().getFile().getAbsolutePath())
 				.filter(path -> path.endsWith(".jar"))
 				.collect(Collectors.toList());
 	}

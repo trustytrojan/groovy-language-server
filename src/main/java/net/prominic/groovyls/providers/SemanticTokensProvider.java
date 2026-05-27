@@ -186,7 +186,7 @@ public class SemanticTokensProvider {
 
 	private int tokenTypeIndexFromNode(ASTNode node) {
 		if (node instanceof MethodNode
-				|| GroovyASTUtils.getTypeOfNode(node, astVisitor).equals(ClassHelper.CLOSURE_TYPE))
+				|| ClassHelper.CLOSURE_TYPE.equals(GroovyASTUtils.getTypeOfNode(node, astVisitor)))
 			return tokenTypeIndex("function");
 		if (node instanceof ClassNode || node instanceof ImportNode)
 			return tokenTypeIndex("class");
