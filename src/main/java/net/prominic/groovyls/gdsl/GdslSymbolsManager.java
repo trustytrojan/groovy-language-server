@@ -209,11 +209,6 @@ public class GdslSymbolsManager {
 
         // Add field to the class
         classNode.addField(fieldNode);
-
-        // Also add a PropertyNode so the field behaves like a Groovy property
-        // PropertyNode prop = new PropertyNode(fieldNode, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, null, null);
-        // prop.setSynthetic(true);
-        // classNode.addProperty(prop);
     }
 
     /**

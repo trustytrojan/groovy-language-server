@@ -343,6 +343,13 @@ public class GroovyASTUtils {
                             return getTypeOfNode(decl.getRightExpression(), astVisitor);
                         }
                     }
+                } else {
+                    ClassNode enclosingClass = (ClassNode) getEnclosingNodeOfType(node, ClassNode.class, astVisitor);
+                    if (enclosingClass != null) {
+                        FieldNode fn = enclosingClass.getField(node.getText());
+                        if (fn != null)
+                            return fn.getType();
+                    }
                 }
             }
             if (var.getOriginType() != null) {

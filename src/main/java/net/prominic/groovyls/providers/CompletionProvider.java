@@ -131,29 +131,12 @@ public class CompletionProvider {
 
 	private void populateItemsFromPropertyExpression(PropertyExpression propExpr, Position position,
 			List<CompletionItem> items) {
-		Expression objExpr = propExpr.getObjectExpression();
-		if (objExpr.getType().equals(ClassHelper.OBJECT_TYPE)) {
-			// This might be a field/property of the script class,
-			// so let's look for it and replace objExpr with it.
-			ASTNode current = propExpr;
-			while ((current = ast.getParent(current)) != null) {
-				if (!(current instanceof ClassNode))
-					continue;
-
-				FieldNode fn = ((ClassNode) current).getField(objExpr.getText());
-				if (fn == null)
-					break;
-
-				objExpr = new FieldExpression(fn);
-				break;
-			}
-		}
 		Range propertyRange = GroovyLanguageServerUtils.astNodeToRange(propExpr.getProperty());
 		if (propertyRange == null) {
 			return;
 		}
 		String memberName = getMemberName(propExpr.getPropertyAsString(), propertyRange, position);
-		populateItemsFromExpression(objExpr, memberName, items);
+		populateItemsFromExpression(propExpr.getObjectExpression(), memberName, items);
 	}
 
 	private void populateItemsFromMethodCallExpression(MethodCallExpression methodCallExpr, Position position,
