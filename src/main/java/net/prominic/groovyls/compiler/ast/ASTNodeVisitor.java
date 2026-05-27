@@ -621,14 +621,15 @@ public class ASTNodeVisitor extends ClassCodeVisitorSupport {
 		}
 	}
 
-	public void visitShortTernaryExpression(ElvisOperatorExpression node) {
+	// https://github.com/GroovyLanguageServer/groovy-language-server/pull/102
+	/*public void visitShortTernaryExpression(ElvisOperatorExpression node) {
 		pushASTNode(node);
 		try {
 			super.visitShortTernaryExpression(node);
 		} finally {
 			popASTNode();
 		}
-	}
+	}*/
 
 	public void visitPostfixExpression(PostfixExpression node) {
 		pushASTNode(node);

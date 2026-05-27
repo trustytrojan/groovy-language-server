@@ -35,6 +35,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
@@ -105,8 +106,10 @@ import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.artifact.Artifact;
 import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.aether.collection.CollectRequest;
+import org.eclipse.aether.collection.DependencySelector;
 import org.eclipse.aether.connector.basic.BasicRepositoryConnectorFactory;
 import org.eclipse.aether.graph.Dependency;
+import org.eclipse.aether.graph.Exclusion;
 import org.eclipse.aether.impl.DefaultServiceLocator;
 import org.eclipse.aether.repository.LocalRepository;
 import org.eclipse.aether.repository.RemoteRepository;
@@ -115,6 +118,8 @@ import org.eclipse.aether.resolution.DependencyResult;
 import org.eclipse.aether.spi.connector.RepositoryConnectorFactory;
 import org.eclipse.aether.spi.connector.transport.TransporterFactory;
 import org.eclipse.aether.transport.http.HttpTransporterFactory;
+import org.eclipse.aether.util.graph.selector.AndDependencySelector;
+import org.eclipse.aether.util.graph.selector.ExclusionDependencySelector;
 
 import groovy.lang.GroovyClassLoader;
 import groovyjarjarasm.asm.Opcodes;
@@ -453,12 +458,22 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 		locator.addService(TransporterFactory.class, HttpTransporterFactory.class);
 		RepositorySystem system = locator.getService(RepositorySystem.class);
 
-		// 2. Point strictly to the global user home ~/.m2/repository across all OS
-		// environments
+		// 2. Point strictly to the global user home ~/.m2/repository
 		DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
 		File m2Home = new File(System.getProperty("user.home"), ".m2/repository");
 		LocalRepository localRepo = new LocalRepository(m2Home);
 		session.setLocalRepositoryManager(system.newLocalRepositoryManager(session, localRepo));
+
+		// Fix org.jenkins-ci.plugins:artifactory:4.0.8 depending on org.codehaus.groovy:groovy-all:jar:3.0.13
+		// by excluding it, and instead using org.codehaus.groovy:groovy:5.0.6 directly.
+		Exclusion groovyAllExclusion = new Exclusion("org.codehaus.groovy", "groovy-all", "*", "*");
+		DependencySelector customExclusion = new ExclusionDependencySelector(Collections.singleton(groovyAllExclusion));
+
+		// Combine your rule with standard Maven logic (optional deps handling, scope
+		// filtering, etc.)
+		session.setDependencySelector(new AndDependencySelector(
+				MavenRepositorySystemUtils.newSession().getDependencySelector(),
+				customExclusion));
 
 		// 3. Define artifact details
 		Artifact artifact = new DefaultArtifact(coords);
@@ -475,9 +490,12 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 
 		DependencyResult result = system.resolveDependencies(session, dependencyRequest);
 
-		// 5. Gather and return absolute paths for found runtime JAR files
+		// 5. Gather and return absolute paths for found runtime JAR files safely
 		return result.getArtifactResults().stream()
-				.map(a -> a.getArtifact().getFile().getAbsolutePath())
+				.map(a -> a.getArtifact().getFile())
+				.filter(Objects::nonNull) // Safe check to prevent NullPointerException on POM-only items if any slip
+											// through
+				.map(File::getAbsolutePath)
 				.filter(path -> path.endsWith(".jar"))
 				.collect(Collectors.toList());
 	}
@@ -524,8 +542,8 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 					continue;
 				String depString = dep.getAsString();
 				try {
+					System.err.println("Resolving dependency " + depString);
 					dependencyClasspaths.addAll(downloadToDefaultM2(depString, repositoryUrl));
-					System.err.println(depString);
 				} catch (Exception e) {
 					e.printStackTrace();
 				}
