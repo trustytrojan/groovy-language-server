@@ -158,9 +158,6 @@ public class SemanticTokensProvider {
 
 	// probably should be named `processSymbol` and/or should be split up by type a bit more
 	private void processDeclaration(ASTNode node, String text, List<Token> tokens, Set<String> emitted) {
-		// undefined variables should be uncolored
-		if (GroovyASTUtils.getDefinition(node, true, astVisitor) == null) return;
-
 		Range range = GroovyLanguageServerUtils.astNodeToRange(node);
 		if (range == null) return;
 
