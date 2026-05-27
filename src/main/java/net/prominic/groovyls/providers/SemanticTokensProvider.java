@@ -36,13 +36,13 @@ import org.eclipse.lsp4j.TextDocumentIdentifier;
 import net.prominic.groovyls.util.FileContentsTracker;
 import net.prominic.groovyls.compiler.ast.ASTNodeVisitor;
 import org.codehaus.groovy.ast.ASTNode;
+import org.codehaus.groovy.ast.ClassHelper;
 import org.codehaus.groovy.ast.MethodNode;
 import org.codehaus.groovy.ast.Variable;
 import org.codehaus.groovy.ast.FieldNode;
 import org.codehaus.groovy.ast.ImportNode;
 import org.codehaus.groovy.ast.PropertyNode;
 import org.codehaus.groovy.ast.Parameter;
-import org.codehaus.groovy.ast.expr.ClassExpression;
 import org.codehaus.groovy.ast.expr.PropertyExpression;
 import org.codehaus.groovy.ast.ClassNode;
 import net.prominic.groovyls.compiler.util.GroovyASTUtils;
@@ -139,20 +139,9 @@ public class SemanticTokensProvider {
 
 		boolean fieldExists = false;
 
-		// Check 1: Check the enclosing class scope
-		ClassNode enclosing = (ClassNode) GroovyASTUtils.getEnclosingNodeOfType(pe, ClassNode.class, astVisitor);
-		if (enclosing != null) {
-			if (enclosing.getField(propName) != null || enclosing.getProperty(propName) != null) {
-				fieldExists = true;
-			}
-		}
-
-		// Check 2: Check the target object expression's resolved type (Fixes Closure.DELEGATE_FIRST)
+		// Check the target object expression's ClassNode for a field/property of the same name
 		if (!fieldExists && pe.getObjectExpression() != null) {
-			ClassNode targetClass = (pe.getObjectExpression() instanceof ClassExpression)
-					? pe.getObjectExpression().getType()
-					: GroovyASTUtils.getTypeOfNode(pe.getObjectExpression(), astVisitor);
-			
+			ClassNode targetClass = GroovyASTUtils.getTypeOfNode(pe.getObjectExpression(), astVisitor);
 			if (targetClass != null && (targetClass.getField(propName) != null || targetClass.getProperty(propName) != null)) {
 				fieldExists = true;
 			}
@@ -169,6 +158,9 @@ public class SemanticTokensProvider {
 
 	// probably should be named `processSymbol` and/or should be split up by type a bit more
 	private void processDeclaration(ASTNode node, String text, List<Token> tokens, Set<String> emitted) {
+		// undefined variables should be uncolored
+		if (GroovyASTUtils.getDefinition(node, true, astVisitor) == null) return;
+
 		Range range = GroovyLanguageServerUtils.astNodeToRange(node);
 		if (range == null) return;
 
@@ -196,7 +188,8 @@ public class SemanticTokensProvider {
 	}
 
 	private int tokenTypeIndexFromNode(ASTNode node) {
-		if (node instanceof MethodNode)
+		if (node instanceof MethodNode
+				|| GroovyASTUtils.getTypeOfNode(node, astVisitor).equals(ClassHelper.CLOSURE_TYPE))
 			return tokenTypeIndex("function");
 		if (node instanceof ClassNode || node instanceof ImportNode)
 			return tokenTypeIndex("class");
