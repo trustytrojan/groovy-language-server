@@ -218,10 +218,9 @@ public class GdslSymbolsManager {
         List<Parameter> params = new ArrayList<>();
 
         if (symbol.namedParams != null && !symbol.namedParams.isEmpty()) {
-            for (Map<String, Object> paramMap : symbol.namedParams) {
-                // TODO: Fix namedParams
-                String paramName = (String) paramMap.getOrDefault("name", "param");
-                ClassNode paramClassNode = new ClassNode(Object.class);
+            for (Map<String, String> paramMap : symbol.namedParams) {
+                String paramName = paramMap.get("name");
+                ClassNode paramClassNode = ClassHelper.make(paramMap.get("type"));
                 params.add(new Parameter(paramClassNode, paramName));
             }
         } else if (symbol.params != null && !symbol.params.isEmpty()) {

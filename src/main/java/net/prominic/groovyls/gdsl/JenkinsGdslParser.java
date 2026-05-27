@@ -120,7 +120,7 @@ public class JenkinsGdslParser {
                                 (String) args.get("name"),
                                 (String) args.get("type"),
                                 (String) args.get("doc"),
-                                (List<Map<String, Object>>) args.get("namedParams"),
+                                (List<Map<String, String>>) args.get("namedParams"),
                                 (Map<String, Object>) args.get("params"),
                                 finalIsNodeCtx,
                                 false
