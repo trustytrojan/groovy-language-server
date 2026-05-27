@@ -1,5 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Copyright 2022 Prominic.NET, Inc.
+// Copyright 2026 trustytrojan
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,6 +15,7 @@
 // limitations under the License
 //
 // Author: Prominic.NET, Inc.
+// Author: trustytrojan
 // No warranty of merchantability or fitness of any kind.
 // Use this software at your own risk.
 ////////////////////////////////////////////////////////////////////////////////
@@ -27,6 +29,7 @@ import org.codehaus.groovy.ast.AnnotatedNode;
 import org.codehaus.groovy.ast.ClassNode;
 import org.codehaus.groovy.ast.MethodNode;
 import org.codehaus.groovy.ast.Variable;
+import org.codehaus.groovy.ast.expr.VariableExpression;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.MarkupContent;
 import org.eclipse.lsp4j.MarkupKind;
@@ -60,6 +63,14 @@ public class HoverProvider {
 		}
 
 		ASTNode definitionNode = GroovyASTUtils.getDefinition(offsetNode, false, ast);
+		if (definitionNode == null && offsetNode instanceof VariableExpression) {
+			// gdsl: Lookup the variable's text as a field of the enclosing script class.
+			ClassNode enclosingClass = (ClassNode) GroovyASTUtils.getEnclosingNodeOfType(offsetNode, ClassNode.class,
+					ast);
+			if (enclosingClass != null && enclosingClass.isScript()) {
+				definitionNode = enclosingClass.getField(offsetNode.getText());
+			}
+		}
 		if (definitionNode == null) {
 			return CompletableFuture.completedFuture(null);
 		}

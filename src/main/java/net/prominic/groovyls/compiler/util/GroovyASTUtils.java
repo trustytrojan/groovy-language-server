@@ -346,8 +346,9 @@ public class GroovyASTUtils {
                         }
                     }
                 } else {
+                    // gdsl: Lookup the variable's text as a field of the enclosing script class.
                     ClassNode enclosingClass = (ClassNode) getEnclosingNodeOfType(node, ClassNode.class, astVisitor);
-                    if (enclosingClass != null) {
+                    if (enclosingClass != null && enclosingClass.isScript()) {
                         FieldNode fn = enclosingClass.getField(node.getText());
                         if (fn != null)
                             return fn.getType();
