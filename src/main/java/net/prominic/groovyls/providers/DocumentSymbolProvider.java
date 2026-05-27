@@ -37,7 +37,6 @@ import org.eclipse.lsp4j.jsonrpc.messages.Either;
 
 import net.prominic.groovyls.compiler.ast.ASTNodeVisitor;
 import net.prominic.groovyls.compiler.util.GroovyASTUtils;
-
 import net.prominic.groovyls.util.GroovyLanguageServerUtils;
 
 public class DocumentSymbolProvider {
@@ -82,10 +81,6 @@ public class DocumentSymbolProvider {
 		}).filter(symbolInformation -> symbolInformation != null).map(node -> {
 			return Either.<SymbolInformation, DocumentSymbol>forLeft(node);
 		}).collect(Collectors.toList());
-
-		// GDSL symbols are now injected as methods into ClassNodes and will be
-		// included in the symbols above through normal method traversal
-
 		return CompletableFuture.completedFuture(symbols);
 	}
 }
