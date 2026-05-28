@@ -33,6 +33,7 @@ import org.eclipse.lsp4j.SemanticTokens;
 import org.eclipse.lsp4j.SemanticTokensLegend;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 
+import groovyjarjarasm.asm.Opcodes;
 import net.prominic.groovyls.util.FileContentsTracker;
 import net.prominic.groovyls.compiler.ast.ASTNodeVisitor;
 import org.codehaus.groovy.ast.ASTNode;
@@ -44,8 +45,11 @@ import org.codehaus.groovy.ast.ImportNode;
 import org.codehaus.groovy.ast.PropertyNode;
 import org.codehaus.groovy.ast.Parameter;
 import org.codehaus.groovy.ast.expr.PropertyExpression;
+import org.codehaus.groovy.ast.expr.VariableExpression;
 import org.codehaus.groovy.ast.ClassNode;
 import net.prominic.groovyls.compiler.util.GroovyASTUtils;
+
+import org.codehaus.groovy.ast.expr.FieldExpression;
 import org.codehaus.groovy.ast.expr.MethodCallExpression;
 import net.prominic.groovyls.util.GroovyLanguageServerUtils;
 
@@ -60,11 +64,14 @@ public class SemanticTokensProvider {
 	private final FileContentsTracker fileContentsTracker;
 
 	// token types used in the legend (must match order below)
-	public static final List<String> TOKEN_TYPES = Collections.unmodifiableList(Arrays.asList(
+	private static final List<String> TOKEN_TYPES = Collections.unmodifiableList(Arrays.asList(
 			"namespace","class","enum","interface","struct","typeParameter","type",
 			"parameter","variable","property","enumMember","event","function","method",
 			"macro","keyword","modifier","comment","string","number","regexp","operator"
 	));
+
+	private static final List<String> TOKEN_MODIFIERS = Collections.unmodifiableList(Arrays.asList(
+			"declaration", "definition", "readonly", "static", "deprecated", "abstract"));
 
 	private final ASTNodeVisitor astVisitor;
 
@@ -73,8 +80,8 @@ public class SemanticTokensProvider {
 		this.astVisitor = astVisitor;
 	}
 
-	public SemanticTokensLegend getLegend() {
-		return new SemanticTokensLegend(TOKEN_TYPES, Collections.emptyList());
+	public static SemanticTokensLegend getLegend() {
+		return new SemanticTokensLegend(TOKEN_TYPES, TOKEN_MODIFIERS);
 	}
 
 	public SemanticTokens provideFull(TextDocumentIdentifier textDocument) {
@@ -125,7 +132,7 @@ public class SemanticTokensProvider {
 		Position pos = new Position(methodRange.getStart().getLine(), methodRange.getStart().getCharacter());
 		String key = pos.line + ":" + pos.col + ":" + methodName + ":" + "method";
 		if (emitted.add(key)) {
-			tokens.add(new Token(pos.line, pos.col, methodName.length(), tokenTypeIndex("method")));
+			tokens.add(new Token(pos.line, pos.col, methodName.length(), tokenTypeIndex("method"), 0));
 		}
 	}
 
@@ -138,12 +145,19 @@ public class SemanticTokensProvider {
 		if (propRange == null) return;
 
 		boolean fieldExists = false;
+		boolean isReadonly = false;
 
 		// Check the target object expression's ClassNode for a field/property of the same name
 		if (!fieldExists && pe.getObjectExpression() != null) {
 			ClassNode targetClass = GroovyASTUtils.getTypeOfNode(pe.getObjectExpression(), astVisitor);
-			if (targetClass != null && (targetClass.getField(propName) != null || targetClass.getProperty(propName) != null)) {
-				fieldExists = true;
+			if (targetClass != null) {
+				FieldNode fn = targetClass.getField(propName);
+				PropertyNode pn = targetClass.getProperty(propName);
+				fieldExists = (fn != null) || (pn != null);
+				if (fn != null) {
+					isReadonly = targetClass.getField(propName).isFinal();
+					System.err.printf("fn=%s text=%s isReadonly=%s\n", fn, fn.getText(), isReadonly);
+				}
 			}
 		}
 
@@ -152,7 +166,7 @@ public class SemanticTokensProvider {
 		Position pos = new Position(propRange.getStart().getLine(), propRange.getStart().getCharacter());
 		String key = pos.line + ":" + pos.col + ":" + propName + ":" + "property";
 		if (emitted.add(key)) {
-			tokens.add(new Token(pos.line, pos.col, propName.length(), tokenTypeIndex("property")));
+			tokens.add(new Token(pos.line, pos.col, propName.length(), tokenTypeIndex("property"), isReadonly ? tokenModifierIndex("readonly") : 0));
 		}
 	}
 
@@ -176,17 +190,35 @@ public class SemanticTokensProvider {
 		int found = findExactTokenOffset(text, name, startOffset, endOffset);
 		if (found == -1) return;
 
+		boolean isReadonly = false;
+
+		if (node instanceof FieldExpression) {
+			FieldNode fn = ((FieldExpression) node).getField();
+			isReadonly |= fn.isFinal();
+		} else if (node instanceof VariableExpression) {
+			Variable v = ((VariableExpression) node).getAccessedVariable();
+			isReadonly |= (v.getModifiers() & Opcodes.ACC_FINAL) != 0;
+		} else if (node instanceof FieldNode) {
+			isReadonly |= ((FieldNode) node).isFinal();
+		} else if (node instanceof Variable) {
+			isReadonly |= (((Variable) node).getModifiers() & Opcodes.ACC_FINAL) != 0;
+		}
+
+		System.err.printf("node=%s isReadonly=%s\n", node, isReadonly);
+		int tokenModifiers = isReadonly ? tokenModifierIndex("readonly") : 0;
+		System.err.println("tokenModifiers: " + tokenModifiers);
+
 		Position pos = toLineCol(text, found);
 		int tokenType = tokenTypeIndexFromNode(node);
 		String key = pos.line + ":" + pos.col + ":" + name + ":" + tokenType;
 		if (emitted.add(key)) {
-			tokens.add(new Token(pos.line, pos.col, name.length(), tokenType));
+			tokens.add(new Token(pos.line, pos.col, name.length(), tokenType, tokenModifiers));
 		}
 	}
 
 	private int tokenTypeIndexFromNode(ASTNode node) {
 		if (node instanceof MethodNode
-				|| GroovyASTUtils.getTypeOfNode(node, astVisitor).equals(ClassHelper.CLOSURE_TYPE))
+				|| ClassHelper.CLOSURE_TYPE.equals(GroovyASTUtils.getTypeOfNode(node, astVisitor)))
 			return tokenTypeIndex("function");
 		if (node instanceof ClassNode || node instanceof ImportNode)
 			return tokenTypeIndex("class");
@@ -208,7 +240,7 @@ public class SemanticTokensProvider {
 		int tokenTypeCtor = tokenTypeIndex("class");
 		String keyCtor = posCtor.line + ":" + posCtor.col + ":" + className + ":" + tokenTypeCtor;
 		if (emitted.add(keyCtor)) {
-			tokens.add(new Token(posCtor.line, posCtor.col, className.length(), tokenTypeCtor));
+			tokens.add(new Token(posCtor.line, posCtor.col, className.length(), tokenTypeCtor, 0));
 		}
 	}
 
@@ -252,7 +284,7 @@ public class SemanticTokensProvider {
 			data.add(deltaStart);
 			data.add(t.length);
 			data.add(t.tokenType);
-			data.add(0); // modifiers bitset
+			data.add(t.tokenModifiers);
 
 			prevLine = t.line;
 			prevChar = t.startChar;
@@ -281,17 +313,24 @@ public class SemanticTokensProvider {
 		return idx >= 0 ? idx : 0;
 	}
 
+	private int tokenModifierIndex(String modifier) {
+		int idx = TOKEN_MODIFIERS.indexOf(modifier);
+		return idx >= 0 ? idx : 0;
+	}
+
 	private static class Token {
 		final int line;
 		final int startChar;
 		final int length;
 		final int tokenType;
+		final int tokenModifiers;
 
-		Token(int line, int startChar, int length, int tokenType) {
+		Token(int line, int startChar, int length, int tokenType, int tokenModifiers) {
 			this.line = line;
 			this.startChar = startChar;
 			this.length = length;
 			this.tokenType = tokenType;
+			this.tokenModifiers = tokenModifiers;
 		}
 	}
 
