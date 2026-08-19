@@ -35,7 +35,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
@@ -551,26 +550,29 @@ public class GroovyServices implements TextDocumentService, WorkspaceService, La
 		System.err.println("Finished installing all Maven dependencies");
 	}
 
+	private MethodNode addMethodToClassNodeOfClass(Class<?> c, Method method) {
+		return ClassHelper.make(c).addMethod(method.getName(),
+				Opcodes.ACC_PUBLIC,
+				ClassHelper.make(method.getReturnType()),
+				Stream.of(method.getParameters()).skip(1)
+						.map(p -> new Parameter(ClassHelper.make(p.getType()), p.getName()))
+						.toArray(Parameter[]::new),
+				Stream.of(method.getExceptionTypes()).map(ClassHelper::make).toArray(ClassNode[]::new),
+				null);
+	}
+
+	private void injectDefaultGroovyMethod(Method method) {
+		Class<?> firstParameterType = method.getParameterTypes()[0];
+		MethodNode mn = addMethodToClassNodeOfClass(firstParameterType, method);
+		mn.putNodeMetaData("dgm", true);
+	}
+
 	private void injectDefaultGroovyMethods() {
-		for (Class<?> dgmClass : DefaultGroovyMethods.DGM_LIKE_CLASSES) {
-			for (Method method : dgmClass.getMethods()) {
-				if (method.getParameterCount() == 0)
-					continue;
-				Class<?> firstParameterType = method.getParameterTypes()[0];
-				if (firstParameterType == Object.class) {
-					MethodNode mn = ClassHelper.OBJECT_TYPE.addMethod(
-							method.getName(),
-							Opcodes.ACC_PUBLIC,
-							ClassHelper.make(method.getReturnType()),
-							Stream.of(method.getParameters()).skip(1)
-									.map(p -> new Parameter(ClassHelper.make(p.getType()), p.getName()))
-									.toArray(Parameter[]::new),
-							Stream.of(method.getExceptionTypes()).map(ClassHelper::make).toArray(ClassNode[]::new),
-							null);
-					mn.putNodeMetaData("dgm", true);
-				}
-			}
-		}
+		Stream.of(DefaultGroovyMethods.DGM_LIKE_CLASSES)
+				.map(Class::getMethods)
+				.flatMap(Stream::of)
+				.filter(m -> m.getParameterCount() > 0)
+				.forEach(this::injectDefaultGroovyMethod);
 	}
 
 	private boolean createOrUpdateCompilationUnit() {
