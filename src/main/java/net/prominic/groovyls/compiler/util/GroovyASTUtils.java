@@ -170,7 +170,10 @@ public class GroovyASTUtils {
     public static FieldNode getFieldFromExpression(PropertyExpression node, ASTNodeVisitor astVisitor) {
         ClassNode classNode = getTypeOfNode(node.getObjectExpression(), astVisitor);
         if (classNode != null) {
-            return classNode.getField(node.getProperty().getText());
+            FieldNode fn = classNode.getField(node.getProperty().getText());
+            if (fn != null && memberIsVisible(fn, node, astVisitor)) {
+                return fn;
+            }
         }
         return null;
     }
@@ -194,10 +197,6 @@ public class GroovyASTUtils {
 
                 visitAllSupertypes(current, classNodes);
                 i++;
-            }
-            System.err.printf("Returning fields for %s:\n", classNode.getName());
-            for (FieldNode fn : result) {
-                System.err.printf("name=%s public=%s\n", fn.getName(), fn.isPublic());
             }
             return result;
         }
@@ -344,13 +343,64 @@ public class GroovyASTUtils {
         return null;
     }
 
+    private static boolean memberIsVisible(MethodNode member, Expression expr, ASTNodeVisitor astVisitor) {
+        if (member == null) {
+            return true;
+        }
+        ClassNode declaringClass = member.getDeclaringClass();
+        ClassNode enclosingClass = (ClassNode) getEnclosingNodeOfType(expr, ClassNode.class, astVisitor);
+        if (enclosingClass == null) {
+            // Not sure what's going on here, just return.
+            return true;
+        }
+        if (enclosingClass.equals(declaringClass)) {
+            // We are in the same class as the object we are getting members from.
+            return true;
+        }
+        if (enclosingClass.isDerivedFrom(declaringClass)) {
+            // We are in the body of class B which extends class A,
+            // and we are accessing a member of class A.
+            // Only return if protected or public.
+            if (member.isProtected() || member.isPublic())
+                return true;
+        }
+        // All other cases: only return if public.
+        return member.isPublic();
+    }
+
+    private static boolean memberIsVisible(FieldNode member, Expression expr, ASTNodeVisitor astVisitor) {
+        if (member == null) {
+            return true;
+        }
+        ClassNode declaringClass = member.getDeclaringClass();
+        ClassNode enclosingClass = (ClassNode) getEnclosingNodeOfType(expr, ClassNode.class, astVisitor);
+        if (enclosingClass == null) {
+            // Not sure what's going on here, just return.
+            return true;
+        }
+        if (enclosingClass.equals(declaringClass)) {
+            // We are in the same class as the object we are getting members from.
+            return true;
+        }
+        if (enclosingClass.isDerivedFrom(declaringClass)) {
+            // We are in the body of class B which extends class A,
+            // and we are accessing a member of class A.
+            // Only return if protected or public.
+            if (member.isProtected() || member.isPublic())
+                return true;
+        }
+        // All other cases: only return if public.
+        return member.isPublic();
+    }
+
     public static List<MethodNode> getMethodOverloadsFromCallExpression(MethodCall node, ASTNodeVisitor astVisitor) {
         if (node instanceof MethodCallExpression) {
             MethodCallExpression methodCallExpr = (MethodCallExpression) node;
             ClassNode leftType = getTypeOfNode(methodCallExpr.getObjectExpression(), astVisitor);
             if (leftType != null) {
                 return leftType.getAllDeclaredMethods().stream()
-                        .filter(m -> m.getName().equals(methodCallExpr.getMethod().getText()))
+                        .filter(m -> m.getName().equals(methodCallExpr.getMethod().getText())
+                                && memberIsVisible(m, methodCallExpr, astVisitor))
                         .collect(Collectors.toList());
             }
         } else if (node instanceof ConstructorCallExpression) {
@@ -358,6 +408,7 @@ public class GroovyASTUtils {
             ClassNode constructorType = constructorCallExpr.getType();
             if (constructorType != null) {
                 return constructorType.getDeclaredConstructors().stream().map(constructor -> (MethodNode) constructor)
+                        .filter(mn -> memberIsVisible(mn, constructorCallExpr, astVisitor))
                         .collect(Collectors.toList());
             }
         }

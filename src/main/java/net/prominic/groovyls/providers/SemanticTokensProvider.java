@@ -139,13 +139,10 @@ public class SemanticTokensProvider {
 
 		boolean fieldExists = false;
 
-		// Check the target object expression's ClassNode for a field/property of the same name
-		if (!fieldExists && pe.getObjectExpression() != null) {
-			ClassNode targetClass = GroovyASTUtils.getTypeOfNode(pe.getObjectExpression(), astVisitor);
-			if (targetClass != null && (targetClass.getField(propName) != null || targetClass.getProperty(propName) != null)) {
-				fieldExists = true;
-			}
-		}
+		// Use these utility functions because they also take into account member visibility.
+		FieldNode fn = GroovyASTUtils.getFieldFromExpression(pe, astVisitor);
+		PropertyNode pn = GroovyASTUtils.getPropertyFromExpression(pe, astVisitor);
+		fieldExists = (fn != null) || (pn != null);
 
 		if (!fieldExists) return;
 
