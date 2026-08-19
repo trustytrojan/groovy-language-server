@@ -189,25 +189,15 @@ public class GroovyASTUtils {
                 ClassNode current = classNodes.get(i);
 
                 result.addAll(current.getFields().stream().filter(fieldNode -> {
-                    return statics ? fieldNode.isStatic() : !fieldNode.isStatic();
+                    return fieldNode.isPublic() && (statics ? fieldNode.isStatic() : !fieldNode.isStatic());
                 }).collect(Collectors.toList()));
 
-                if (current.isInterface()) {
-                    for (ClassNode interfaceNode : current.getInterfaces()) {
-                        classNodes.add(interfaceNode);
-                    }
-                } else {
-                    ClassNode superClassNode = null;
-                    try {
-                        superClassNode = current.getSuperClass();
-                    } catch (NoClassDefFoundError e) {
-                        // this is fine, we'll just treat it as null
-                    }
-                    if (superClassNode != null) {
-                        classNodes.add(superClassNode);
-                    }
-                }
+                visitAllSupertypes(current, classNodes);
                 i++;
+            }
+            System.err.printf("Returning fields for %s:\n", classNode.getName());
+            for (FieldNode fn : result) {
+                System.err.printf("name=%s public=%s\n", fn.getName(), fn.isPublic());
             }
             return result;
         }
@@ -229,26 +219,13 @@ public class GroovyASTUtils {
                 ClassNode current = classNodes.get(i);
 
                 result.addAll(current.getProperties().stream().filter(propNode -> {
-                    return statics ? propNode.isStatic() : !propNode.isStatic();
+                    return propNode.isPublic() && (statics ? propNode.isStatic() : !propNode.isStatic());
                 }).collect(Collectors.toList()));
 
-                if (current.isInterface()) {
-                    for (ClassNode interfaceNode : current.getInterfaces()) {
-                        classNodes.add(interfaceNode);
-                    }
-                } else {
-                    ClassNode superClassNode = null;
-                    try {
-                        superClassNode = current.getSuperClass();
-                    } catch (NoClassDefFoundError e) {
-                        // this is fine, we'll just treat it as null
-                    }
-                    if (superClassNode != null) {
-                        classNodes.add(superClassNode);
-                    }
-                }
+                visitAllSupertypes(current, classNodes);
                 i++;
             }
+            return result;
         }
         return Collections.emptyList();
     }
@@ -268,29 +245,30 @@ public class GroovyASTUtils {
                 ClassNode current = classNodes.get(i);
 
                 result.addAll(current.getMethods().stream().filter(methodNode -> {
-                    return statics ? methodNode.isStatic() : !methodNode.isStatic();
+                    return methodNode.isPublic() && (statics ? methodNode.isStatic() : !methodNode.isStatic());
                 }).collect(Collectors.toList()));
 
-                if (current.isInterface()) {
-                    for (ClassNode interfaceNode : current.getInterfaces()) {
-                        classNodes.add(interfaceNode);
-                    }
-                } else {
-                    ClassNode superClassNode = null;
-                    try {
-                        superClassNode = current.getSuperClass();
-                    } catch (NoClassDefFoundError e) {
-                        // this is fine, we'll just treat it as null
-                    }
-                    if (superClassNode != null) {
-                        classNodes.add(superClassNode);
-                    }
-                }
+                visitAllSupertypes(current, classNodes);
                 i++;
             }
             return result;
         }
         return Collections.emptyList();
+    }
+
+    private static void visitAllSupertypes(ClassNode current, List<ClassNode> classNodes) {
+        for (ClassNode interfaceNode : current.getInterfaces()) {
+            classNodes.add(interfaceNode);
+        }
+        ClassNode superClassNode = null;
+        try {
+            superClassNode = current.getSuperClass();
+        } catch (NoClassDefFoundError e) {
+            // this is fine, we'll just treat it as null
+        }
+        if (superClassNode != null) {
+            classNodes.add(superClassNode);
+        }
     }
 
     public static ClassNode getTypeOfNode(ASTNode node, ASTNodeVisitor astVisitor) {
