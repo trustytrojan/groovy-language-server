@@ -107,7 +107,8 @@ public class HoverProvider {
 	private String getContent(ASTNode hoverNode) {
 		if (hoverNode instanceof ClassNode) {
 			ClassNode classNode = (ClassNode) hoverNode;
-			return GroovyNodeToStringUtils.classToString(classNode, ast);
+			// We just want the full class name, just like Eclipse JDT LS.
+			return classNode.getName();
 		} else if (hoverNode instanceof MethodNode) {
 			MethodNode methodNode = (MethodNode) hoverNode;
 			return GroovyNodeToStringUtils.methodToString(methodNode, ast);

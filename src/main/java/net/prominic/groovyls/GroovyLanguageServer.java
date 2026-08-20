@@ -28,7 +28,6 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 
 import org.eclipse.lsp4j.CompletionOptions;
@@ -102,8 +101,8 @@ public class GroovyLanguageServer implements LanguageServer, LanguageClientAware
         // Register semantic tokens provider for full document tokenization
         SemanticTokensWithRegistrationOptions semanticTokensOptions = new SemanticTokensWithRegistrationOptions();
         semanticTokensOptions.setLegend(new SemanticTokensLegend(
-                SemanticTokensProvider.TOKEN_TYPES,
-                Collections.emptyList()));
+                SemanticTokensProvider.SemanticTokenTypes.getList(),
+                SemanticTokensProvider.SemanticTokenModifiers.getList()));
         semanticTokensOptions.setFull(true);
         serverCapabilities.setSemanticTokensProvider(semanticTokensOptions);
 
