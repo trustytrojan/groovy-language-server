@@ -4,11 +4,9 @@ This is a fork of [GroovyLanguageServer/groovy-language-server](/GroovyLanguageS
 
 - Jenkins pipeline step function support via parsing of GDSL files created by Jenkins instances.
 - Semantic tokens over LSP for dynamic coloring/highlighting
+- Many DX improvements within hovers, go-to-definition, completion menu, etc.
 
-I mainly did this so that the VS Code experience is as close to using the [Red Hat Java extension](https://marketplace.visualstudio.com/items?itemName=redhat.java) as possible. Semantic tokens/highlighting is a major part of that.
-
-## Notes
-- Runtime class symbol detection (e.g. for `java.lang.System`) works best when running the LS on Java 8.
+I mainly did this so that the VS Code experience is as close to using the [Red Hat Java extension](https://marketplace.visualstudio.com/items?itemName=redhat.java) as possible.
 
 The original README continues below.
 
