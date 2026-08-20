@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 
+import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.SemanticTokens;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
@@ -47,10 +48,12 @@ import org.codehaus.groovy.ast.ClassNode;
 
 import net.prominic.groovyls.compiler.util.GroovyASTUtils;
 
+import org.codehaus.groovy.ast.expr.ConstructorCallExpression;
 import org.codehaus.groovy.ast.expr.DeclarationExpression;
 import org.codehaus.groovy.ast.expr.Expression;
 import org.codehaus.groovy.ast.expr.MethodCallExpression;
 import net.prominic.groovyls.util.GroovyLanguageServerUtils;
+import net.prominic.lsp.utils.Ranges;
 
 public class SemanticTokensProvider {
 	private final FileContentsTracker fileContentsTracker;
@@ -129,6 +132,14 @@ public class SemanticTokensProvider {
 		this.astVisitor = astVisitor;
 	}
 
+	private Token makeTokenFromRange(Range r, int type, int modifiers) {
+		final Position start = r.getStart();
+		final int startLine = start.getLine();
+		final int startChar = start.getCharacter();
+		final int endChar = r.getEnd().getCharacter();
+		return new Token(startLine, startChar, endChar - startChar, type, modifiers);
+	}
+
 	public SemanticTokens provideFull(TextDocumentIdentifier textDocument) {
 		URI uri = URI.create(textDocument.getUri());
 		String text = fileContentsTracker.getContents(uri);
@@ -146,32 +157,53 @@ public class SemanticTokensProvider {
 			// System.err.println(node);
 			// }
 
-			// Color in `def` or `var` as a type when used, just like Eclipse JDT LS
+			if (node instanceof ConstructorCallExpression) {
+				ClassNode type = ((ConstructorCallExpression) node).getType();
+				if (type.equals(ClassHelper.OBJECT_TYPE))
+					continue;
+				final Range r = GroovyLanguageServerUtils.astNodeToRange(type);
+				if (r == null)
+					continue;
+				tokens.add(makeTokenFromRange(r, SemanticTokenTypes.METHOD.ordinal(), 0));
+				continue;
+			}
+
 			if (node instanceof DeclarationExpression) {
 				DeclarationExpression de = (DeclarationExpression) node;
-				final Range r = GroovyLanguageServerUtils.astNodeToRange(de);
-				String s = net.prominic.lsp.utils.Ranges.getSubstring(text, r);
-				String[] lines = s.split("\n");
-				int lineno = r.getStart().getLine();
-				int charno = -1;
-				for (String line : lines) {
-					int idx = line.indexOf("def");
-					if (idx == -1) {
-						idx = line.indexOf("var");
+				VariableExpression ve = de.getVariableExpression();
+
+				if (ve.isDynamicTyped()) {
+					// Color in `def` or `var` as a type when used, just like Eclipse JDT LS
+					final Range r = GroovyLanguageServerUtils.astNodeToRange(de);
+					String s = Ranges.getSubstring(text, r);
+					String[] lines = s.split("\n");
+					int lineno = r.getStart().getLine();
+					int charno = -1;
+					for (String line : lines) {
+						int idx = line.indexOf("def");
+						if (idx == -1) {
+							idx = line.indexOf("var");
+						}
+						if (idx > -1) {
+							charno = idx;
+							break;
+						}
+						++lineno;
 					}
-					if (idx > -1) {
-						charno = idx;
-						break;
+					if (charno > -1) {
+						Range ofDef = new Range(new Position(lineno, charno), new Position(lineno, charno + 3));
+						tokens.add(new Token(ofDef.getStart().getLine(), ofDef.getStart().getCharacter(), 3,
+								SemanticTokenTypes.TYPE.ordinal(), 0));
+						continue;
 					}
-					++lineno;
+				} else {
+					ClassNode type = ve.getOriginType();
+					final Range r = GroovyLanguageServerUtils.astNodeToRange(type);
+					if (r == null)
+						continue;
+					tokens.add(makeTokenFromRange(r, SemanticTokenTypes.TYPE.ordinal(), 0));
 				}
-				if (charno > -1) {
-					Range ofDef = new Range(new org.eclipse.lsp4j.Position(lineno, charno),
-							new org.eclipse.lsp4j.Position(lineno, charno + 3));
-					tokens.add(new Token(ofDef.getStart().getLine(), ofDef.getStart().getCharacter(), 3,
-							SemanticTokenTypes.TYPE.ordinal(), 0));
-					continue;
-				}
+
 			}
 
 			// 0) Method calls: color method name when we can resolve a method on the
@@ -213,9 +245,10 @@ public class SemanticTokensProvider {
 			return;
 
 		Position pos = new Position(methodRange.getStart().getLine(), methodRange.getStart().getCharacter());
-		String key = pos.line + ":" + pos.col + ":" + methodName + ":" + "method";
+		String key = pos.getLine() + ":" + pos.getCharacter() + ":" + methodName + ":" + "method";
 		if (emitted.add(key)) {
-			tokens.add(new Token(pos.line, pos.col, methodName.length(), SemanticTokenTypes.METHOD.ordinal(),
+			tokens.add(new Token(pos.getLine(), pos.getCharacter(), methodName.length(),
+					SemanticTokenTypes.METHOD.ordinal(),
 					getModifiersOfMethod(method)));
 		}
 	}
@@ -280,10 +313,11 @@ public class SemanticTokensProvider {
 			modifiers = getModifiersOfProperty(pn);
 
 		Position pos = new Position(propRange.getStart().getLine(), propRange.getStart().getCharacter());
-		String key = pos.line + ":" + pos.col + ":" + propName + ":" + "property";
+		String key = pos.getLine() + ":" + pos.getCharacter() + ":" + propName + ":" + "property";
 		if (emitted.add(key)) {
 			tokens.add(
-					new Token(pos.line, pos.col, propName.length(), SemanticTokenTypes.PROPERTY.ordinal(), modifiers));
+					new Token(pos.getLine(), pos.getCharacter(), propName.length(),
+							SemanticTokenTypes.PROPERTY.ordinal(), modifiers));
 		}
 	}
 
@@ -325,9 +359,9 @@ public class SemanticTokensProvider {
 		else if (node instanceof VariableExpression)
 			modifiers = getModifiersOfVariable((VariableExpression) node);
 
-		String key = pos.line + ":" + pos.col + ":" + name + ":" + tokenType;
+		String key = pos.getLine() + ":" + pos.getCharacter() + ":" + name + ":" + tokenType;
 		if (emitted.add(key)) {
-			tokens.add(new Token(pos.line, pos.col, name.length(), tokenType, modifiers));
+			tokens.add(new Token(pos.getLine(), pos.getCharacter(), name.length(), tokenType, modifiers));
 		}
 	}
 
@@ -357,11 +391,12 @@ public class SemanticTokensProvider {
 			return;
 
 		Position posCtor = toLineCol(text, foundCtor);
-		int tokenTypeCtor = SemanticTokenTypes.CLASS.ordinal();
-		String keyCtor = posCtor.line + ":" + posCtor.col + ":" + className + ":" + tokenTypeCtor;
+		int tokenTypeCtor = SemanticTokenTypes.METHOD.ordinal();
+		String keyCtor = posCtor.getLine() + ":" + posCtor.getCharacter() + ":" + className + ":" + tokenTypeCtor;
 		if (emitted.add(keyCtor)) {
 			tokens.add(
-					new Token(posCtor.line, posCtor.col, className.length(), tokenTypeCtor, getModifiersOfMethod(mn)));
+					new Token(posCtor.getLine(), posCtor.getCharacter(), className.length(), tokenTypeCtor,
+							getModifiersOfMethod(mn)));
 		}
 	}
 
@@ -452,16 +487,6 @@ public class SemanticTokensProvider {
 			this.length = length;
 			this.type = tokenType;
 			this.modifiers = modifiers;
-		}
-	}
-
-	private static class Position {
-		final int line;
-		final int col;
-
-		Position(int line, int col) {
-			this.line = line;
-			this.col = col;
 		}
 	}
 
