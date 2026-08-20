@@ -83,9 +83,16 @@ public class GroovyASTUtils {
             return GroovyASTUtils.getMethodFromCallExpression(callExpression, astVisitor);
         } else if (node instanceof DeclarationExpression) {
             DeclarationExpression declExpression = (DeclarationExpression) node;
-            if (!declExpression.isMultipleAssignmentDeclaration() && declExpression.getRightExpression() != null) {
-                // This makes hovers on def/var show the correct type instead of Object.
-                return declExpression.getRightExpression().getType();
+            if (!declExpression.isMultipleAssignmentDeclaration()) {
+                final VariableExpression ve = declExpression.getVariableExpression();
+                if (ve.isDynamicTyped()) {
+                    // This makes hovers on def/var show the type of the initializing expression.
+                    final ClassNode rightExpressionType = declExpression.getRightExpression().getType();
+                    return tryToResolveOriginalClassNode(rightExpressionType, strict, astVisitor);
+                } else {
+                    final ClassNode originType = ve.getOriginType();
+                    return tryToResolveOriginalClassNode(originType, strict, astVisitor);
+                }
             }
         } else if (node instanceof ClassExpression) {
             ClassExpression classExpression = (ClassExpression) node;
