@@ -25,3 +25,7 @@ target/
 
 # Node.js
 node_modules/
+
+*.groovy
+*.jar
+.groovyls

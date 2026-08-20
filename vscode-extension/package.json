@@ -84,6 +84,11 @@
           "items": {
             "type": "string"
           }
+        },
+        "groovy.dependencies": {
+          "type": "object",
+          "default": null,
+          "description": "Mapping of Maven repository URLs to Maven dependencies (array of strings) to download for class resolution."
         }
       }
     }

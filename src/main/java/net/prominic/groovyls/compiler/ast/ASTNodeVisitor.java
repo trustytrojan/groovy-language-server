@@ -1,5 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Copyright 2022 Prominic.NET, Inc.
+// Copyright 2026 trustytrojan
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,6 +15,7 @@
 // limitations under the License
 //
 // Author: Prominic.NET, Inc.
+// Author: trustytrojan
 // No warranty of merchantability or fitness of any kind.
 // Use this software at your own risk.
 ////////////////////////////////////////////////////////////////////////////////
@@ -621,14 +623,15 @@ public class ASTNodeVisitor extends ClassCodeVisitorSupport {
 		}
 	}
 
-	public void visitShortTernaryExpression(ElvisOperatorExpression node) {
+	// https://github.com/GroovyLanguageServer/groovy-language-server/pull/102
+	/*public void visitShortTernaryExpression(ElvisOperatorExpression node) {
 		pushASTNode(node);
 		try {
 			super.visitShortTernaryExpression(node);
 		} finally {
 			popASTNode();
 		}
-	}
+	}*/
 
 	public void visitPostfixExpression(PostfixExpression node) {
 		pushASTNode(node);

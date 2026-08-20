@@ -31,44 +31,6 @@ import net.prominic.groovyls.compiler.ast.ASTNodeVisitor;
 import net.prominic.groovyls.compiler.util.GroovyASTUtils;
 
 public class GroovyNodeToStringUtils {
-	private static final String JAVA_OBJECT = "java.lang.Object";
-
-	public static String classToString(ClassNode classNode, ASTNodeVisitor ast) {
-		StringBuilder builder = new StringBuilder();
-		String packageName = classNode.getPackageName();
-		if (packageName != null && packageName.length() > 0) {
-			builder.append("package ");
-			builder.append(packageName);
-			builder.append("\n");
-		}
-		if (!classNode.isSyntheticPublic()) {
-			builder.append("public ");
-		}
-		if (classNode.isAbstract()) {
-			builder.append("abstract ");
-		}
-		if (classNode.isInterface()) {
-			builder.append("interface ");
-		} else if (classNode.isEnum()) {
-			builder.append("enum ");
-		} else {
-			builder.append("class ");
-		}
-		builder.append(classNode.getNameWithoutPackage());
-
-		ClassNode superClass = null;
-		try {
-			superClass = classNode.getSuperClass();
-		} catch (NoClassDefFoundError e) {
-			// this is fine, we'll just treat it as null
-		}
-		if (superClass != null && !superClass.getName().equals(JAVA_OBJECT)) {
-			builder.append(" extends ");
-			builder.append(superClass.getNameWithoutPackage());
-		}
-		return builder.toString();
-	}
-
 	public static String constructorToString(ConstructorNode constructorNode, ASTNodeVisitor ast) {
 		StringBuilder builder = new StringBuilder();
 		builder.append(constructorNode.getDeclaringClass().getName());

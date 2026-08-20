@@ -1,5 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Copyright 2022 Prominic.NET, Inc.
+// Copyright 2026 trustytrojan
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,6 +15,7 @@
 // limitations under the License
 //
 // Author: Prominic.NET, Inc.
+// Author: trustytrojan
 // No warranty of merchantability or fitness of any kind.
 // Use this software at your own risk.
 ////////////////////////////////////////////////////////////////////////////////
@@ -81,9 +83,9 @@ public class GroovyASTUtils {
             return GroovyASTUtils.getMethodFromCallExpression(callExpression, astVisitor);
         } else if (node instanceof DeclarationExpression) {
             DeclarationExpression declExpression = (DeclarationExpression) node;
-            if (!declExpression.isMultipleAssignmentDeclaration()) {
-                ClassNode originType = declExpression.getVariableExpression().getOriginType();
-                return tryToResolveOriginalClassNode(originType, strict, astVisitor);
+            if (!declExpression.isMultipleAssignmentDeclaration() && declExpression.getRightExpression() != null) {
+                // This makes hovers on def/var show the correct type instead of Object.
+                return declExpression.getRightExpression().getType();
             }
         } else if (node instanceof ClassExpression) {
             ClassExpression classExpression = (ClassExpression) node;
@@ -168,7 +170,10 @@ public class GroovyASTUtils {
     public static FieldNode getFieldFromExpression(PropertyExpression node, ASTNodeVisitor astVisitor) {
         ClassNode classNode = getTypeOfNode(node.getObjectExpression(), astVisitor);
         if (classNode != null) {
-            return classNode.getField(node.getProperty().getText());
+            FieldNode fn = classNode.getField(node.getProperty().getText());
+            if (fn != null && memberIsVisible(fn, node, astVisitor)) {
+                return fn;
+            }
         }
         return null;
     }
@@ -187,24 +192,10 @@ public class GroovyASTUtils {
                 ClassNode current = classNodes.get(i);
 
                 result.addAll(current.getFields().stream().filter(fieldNode -> {
-                    return statics ? fieldNode.isStatic() : !fieldNode.isStatic();
+                    return fieldNode.isPublic() && (statics ? fieldNode.isStatic() : !fieldNode.isStatic());
                 }).collect(Collectors.toList()));
 
-                if (current.isInterface()) {
-                    for (ClassNode interfaceNode : current.getInterfaces()) {
-                        classNodes.add(interfaceNode);
-                    }
-                } else {
-                    ClassNode superClassNode = null;
-                    try {
-                        superClassNode = current.getSuperClass();
-                    } catch (NoClassDefFoundError e) {
-                        // this is fine, we'll just treat it as null
-                    }
-                    if (superClassNode != null) {
-                        classNodes.add(superClassNode);
-                    }
-                }
+                visitAllSupertypes(current, classNodes);
                 i++;
             }
             return result;
@@ -227,26 +218,13 @@ public class GroovyASTUtils {
                 ClassNode current = classNodes.get(i);
 
                 result.addAll(current.getProperties().stream().filter(propNode -> {
-                    return statics ? propNode.isStatic() : !propNode.isStatic();
+                    return propNode.isPublic() && (statics ? propNode.isStatic() : !propNode.isStatic());
                 }).collect(Collectors.toList()));
 
-                if (current.isInterface()) {
-                    for (ClassNode interfaceNode : current.getInterfaces()) {
-                        classNodes.add(interfaceNode);
-                    }
-                } else {
-                    ClassNode superClassNode = null;
-                    try {
-                        superClassNode = current.getSuperClass();
-                    } catch (NoClassDefFoundError e) {
-                        // this is fine, we'll just treat it as null
-                    }
-                    if (superClassNode != null) {
-                        classNodes.add(superClassNode);
-                    }
-                }
+                visitAllSupertypes(current, classNodes);
                 i++;
             }
+            return result;
         }
         return Collections.emptyList();
     }
@@ -266,29 +244,30 @@ public class GroovyASTUtils {
                 ClassNode current = classNodes.get(i);
 
                 result.addAll(current.getMethods().stream().filter(methodNode -> {
-                    return statics ? methodNode.isStatic() : !methodNode.isStatic();
+                    return methodNode.isPublic() && (statics ? methodNode.isStatic() : !methodNode.isStatic());
                 }).collect(Collectors.toList()));
 
-                if (current.isInterface()) {
-                    for (ClassNode interfaceNode : current.getInterfaces()) {
-                        classNodes.add(interfaceNode);
-                    }
-                } else {
-                    ClassNode superClassNode = null;
-                    try {
-                        superClassNode = current.getSuperClass();
-                    } catch (NoClassDefFoundError e) {
-                        // this is fine, we'll just treat it as null
-                    }
-                    if (superClassNode != null) {
-                        classNodes.add(superClassNode);
-                    }
-                }
+                visitAllSupertypes(current, classNodes);
                 i++;
             }
             return result;
         }
         return Collections.emptyList();
+    }
+
+    private static void visitAllSupertypes(ClassNode current, List<ClassNode> classNodes) {
+        for (ClassNode interfaceNode : current.getInterfaces()) {
+            classNodes.add(interfaceNode);
+        }
+        ClassNode superClassNode = null;
+        try {
+            superClassNode = current.getSuperClass();
+        } catch (NoClassDefFoundError e) {
+            // this is fine, we'll just treat it as null
+        }
+        if (superClassNode != null) {
+            classNodes.add(superClassNode);
+        }
     }
 
     public static ClassNode getTypeOfNode(ASTNode node, ASTNodeVisitor astVisitor) {
@@ -343,6 +322,14 @@ public class GroovyASTUtils {
                             return getTypeOfNode(decl.getRightExpression(), astVisitor);
                         }
                     }
+                } else {
+                    // gdsl: Lookup the variable's text as a field of the enclosing script class.
+                    ClassNode enclosingClass = (ClassNode) getEnclosingNodeOfType(node, ClassNode.class, astVisitor);
+                    if (enclosingClass != null && enclosingClass.isScript()) {
+                        FieldNode fn = enclosingClass.getField(node.getText());
+                        if (fn != null)
+                            return fn.getType();
+                    }
                 }
             }
             if (var.getOriginType() != null) {
@@ -356,18 +343,72 @@ public class GroovyASTUtils {
         return null;
     }
 
+    private static boolean memberIsVisible(MethodNode member, Expression expr, ASTNodeVisitor astVisitor) {
+        if (member == null) {
+            return true;
+        }
+        ClassNode declaringClass = member.getDeclaringClass();
+        ClassNode enclosingClass = (ClassNode) getEnclosingNodeOfType(expr, ClassNode.class, astVisitor);
+        if (enclosingClass == null) {
+            // Not sure what's going on here, just return.
+            return true;
+        }
+        if (enclosingClass.equals(declaringClass)) {
+            // We are in the same class as the object we are getting members from.
+            return true;
+        }
+        if (enclosingClass.isDerivedFrom(declaringClass)) {
+            // We are in the body of class B which extends class A,
+            // and we are accessing a member of class A.
+            // Only return if protected or public.
+            if (member.isProtected() || member.isPublic())
+                return true;
+        }
+        // All other cases: only return if public.
+        return member.isPublic();
+    }
+
+    private static boolean memberIsVisible(FieldNode member, Expression expr, ASTNodeVisitor astVisitor) {
+        if (member == null) {
+            return true;
+        }
+        ClassNode declaringClass = member.getDeclaringClass();
+        ClassNode enclosingClass = (ClassNode) getEnclosingNodeOfType(expr, ClassNode.class, astVisitor);
+        if (enclosingClass == null) {
+            // Not sure what's going on here, just return.
+            return true;
+        }
+        if (enclosingClass.equals(declaringClass)) {
+            // We are in the same class as the object we are getting members from.
+            return true;
+        }
+        if (enclosingClass.isDerivedFrom(declaringClass)) {
+            // We are in the body of class B which extends class A,
+            // and we are accessing a member of class A.
+            // Only return if protected or public.
+            if (member.isProtected() || member.isPublic())
+                return true;
+        }
+        // All other cases: only return if public.
+        return member.isPublic();
+    }
+
     public static List<MethodNode> getMethodOverloadsFromCallExpression(MethodCall node, ASTNodeVisitor astVisitor) {
         if (node instanceof MethodCallExpression) {
             MethodCallExpression methodCallExpr = (MethodCallExpression) node;
             ClassNode leftType = getTypeOfNode(methodCallExpr.getObjectExpression(), astVisitor);
             if (leftType != null) {
-                return leftType.getMethods(methodCallExpr.getMethod().getText());
+                return leftType.getAllDeclaredMethods().stream()
+                        .filter(m -> m.getName().equals(methodCallExpr.getMethod().getText())
+                                && memberIsVisible(m, methodCallExpr, astVisitor))
+                        .collect(Collectors.toList());
             }
         } else if (node instanceof ConstructorCallExpression) {
             ConstructorCallExpression constructorCallExpr = (ConstructorCallExpression) node;
             ClassNode constructorType = constructorCallExpr.getType();
             if (constructorType != null) {
                 return constructorType.getDeclaredConstructors().stream().map(constructor -> (MethodNode) constructor)
+                        .filter(mn -> memberIsVisible(mn, constructorCallExpr, astVisitor))
                         .collect(Collectors.toList());
             }
         }

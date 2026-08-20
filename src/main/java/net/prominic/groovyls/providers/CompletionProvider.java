@@ -1,5 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Copyright 2022 Prominic.NET, Inc.
+// Copyright 2026 trustytrojan
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,6 +15,7 @@
 // limitations under the License
 //
 // Author: Prominic.NET, Inc.
+// Author: trustytrojan
 // No warranty of merchantability or fitness of any kind.
 // Use this software at your own risk.
 ////////////////////////////////////////////////////////////////////////////////
@@ -31,23 +33,28 @@ import java.util.stream.Collectors;
 
 import org.codehaus.groovy.ast.ASTNode;
 import org.codehaus.groovy.ast.AnnotatedNode;
+import org.codehaus.groovy.ast.ClassHelper;
 import org.codehaus.groovy.ast.ClassNode;
 import org.codehaus.groovy.ast.FieldNode;
 import org.codehaus.groovy.ast.ImportNode;
 import org.codehaus.groovy.ast.MethodNode;
 import org.codehaus.groovy.ast.ModuleNode;
+import org.codehaus.groovy.ast.Parameter;
 import org.codehaus.groovy.ast.PropertyNode;
 import org.codehaus.groovy.ast.VariableScope;
 import org.codehaus.groovy.ast.expr.ConstructorCallExpression;
 import org.codehaus.groovy.ast.expr.Expression;
+import org.codehaus.groovy.ast.expr.FieldExpression;
 import org.codehaus.groovy.ast.expr.MethodCallExpression;
 import org.codehaus.groovy.ast.expr.PropertyExpression;
 import org.codehaus.groovy.ast.expr.VariableExpression;
 import org.codehaus.groovy.ast.stmt.BlockStatement;
 import org.codehaus.groovy.ast.stmt.Statement;
+import org.codehaus.groovy.runtime.DefaultGroovyMethods;
 import org.eclipse.lsp4j.CompletionContext;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
+import org.eclipse.lsp4j.CompletionItemLabelDetails;
 import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.MarkupContent;
 import org.eclipse.lsp4j.MarkupKind;
@@ -64,6 +71,7 @@ import net.prominic.groovyls.compiler.ast.ASTNodeVisitor;
 import net.prominic.groovyls.compiler.util.GroovyASTUtils;
 import net.prominic.groovyls.compiler.util.GroovydocUtils;
 import net.prominic.groovyls.util.GroovyLanguageServerUtils;
+import net.prominic.groovyls.util.GroovyNodeToStringUtils;
 
 public class CompletionProvider {
 	private ASTNodeVisitor ast;
@@ -89,6 +97,8 @@ public class CompletionProvider {
 			return CompletableFuture.completedFuture(Either.forLeft(Collections.emptyList()));
 		}
 		ASTNode parentNode = ast.getParent(offsetNode);
+		
+		boolean isInNodeBlock = isInsideNodeBlock(offsetNode);
 
 		isIncomplete = false;
 		List<CompletionItem> items = new ArrayList<>();
@@ -104,15 +114,15 @@ public class CompletionProvider {
 		} else if (parentNode instanceof MethodCallExpression) {
 			populateItemsFromMethodCallExpression((MethodCallExpression) parentNode, position, items);
 		} else if (offsetNode instanceof VariableExpression) {
-			populateItemsFromVariableExpression((VariableExpression) offsetNode, position, items);
+			populateItemsFromVariableExpression((VariableExpression) offsetNode, position, items, isInNodeBlock);
 		} else if (offsetNode instanceof ImportNode) {
 			populateItemsFromImportNode((ImportNode) offsetNode, position, items);
 		} else if (offsetNode instanceof ClassNode) {
 			populateItemsFromClassNode((ClassNode) offsetNode, position, items);
 		} else if (offsetNode instanceof MethodNode) {
-			populateItemsFromScope(offsetNode, "", items);
+			populateItemsFromScope(offsetNode, "", items, isInNodeBlock);
 		} else if (offsetNode instanceof Statement) {
-			populateItemsFromScope(offsetNode, "", items);
+			populateItemsFromScope(offsetNode, "", items, isInNodeBlock);
 		}
 
 		if (isIncomplete) {
@@ -265,14 +275,28 @@ public class CompletionProvider {
 		populateTypes(constructorCallExpr, typeName, new HashSet<>(), true, false, false, items);
 	}
 
+	private boolean isInsideNodeBlock(ASTNode node) {
+		ASTNode current = node;
+		while (current != null) {
+			if (current instanceof org.codehaus.groovy.ast.expr.MethodCallExpression) {
+				org.codehaus.groovy.ast.expr.MethodCallExpression call = (org.codehaus.groovy.ast.expr.MethodCallExpression) current;
+				if ("node".equals(call.getMethodAsString())) {
+					return true;
+				}
+			}
+			current = ast.getParent(current);
+		}
+		return false;
+	}
+
 	private void populateItemsFromVariableExpression(VariableExpression varExpr, Position position,
-			List<CompletionItem> items) {
+			List<CompletionItem> items, boolean isInNodeBlock) {
 		Range varRange = GroovyLanguageServerUtils.astNodeToRange(varExpr);
 		if (varRange == null) {
 			return;
 		}
 		String memberName = getMemberName(varExpr.getName(), varRange, position);
-		populateItemsFromScope(varExpr, memberName, items);
+		populateItemsFromScope(varExpr, memberName, items, isInNodeBlock);
 	}
 
 	private void populateItemsFromPropertiesAndFields(List<PropertyNode> properties, List<FieldNode> fields,
@@ -293,6 +317,9 @@ public class CompletionProvider {
 			if (markdownDocs != null) {
 				item.setDocumentation(new MarkupContent(MarkupKind.MARKDOWN, markdownDocs));
 			}
+			CompletionItemLabelDetails labelDetails = new CompletionItemLabelDetails();
+			labelDetails.setDescription(property.getType().getNameWithoutPackage());
+			item.setLabelDetails(labelDetails);
 			return item;
 		}).collect(Collectors.toList());
 		items.addAll(propItems);
@@ -312,6 +339,9 @@ public class CompletionProvider {
 			if (markdownDocs != null) {
 				item.setDocumentation(new MarkupContent(MarkupKind.MARKDOWN, markdownDocs));
 			}
+			CompletionItemLabelDetails labelDetails = new CompletionItemLabelDetails();
+			labelDetails.setDescription(field.getType().getNameWithoutPackage());
+			item.setLabelDetails(labelDetails);
 			return item;
 		}).collect(Collectors.toList());
 		items.addAll(fieldItems);
@@ -330,6 +360,20 @@ public class CompletionProvider {
 		}).map(method -> {
 			CompletionItem item = new CompletionItem();
 			item.setLabel(method.getName());
+			String methodParams = "(";
+			for (Parameter p : method.getParameters()) {
+				methodParams += p.getType().getNameWithoutPackage() + ' ' + p.getName() + ", ";
+			}
+			if (!methodParams.equals("("))
+				methodParams = methodParams.substring(0, methodParams.length() - 2);
+			methodParams += ')';
+			CompletionItemLabelDetails labelDetails = new CompletionItemLabelDetails();
+			labelDetails.setDetail(methodParams);
+			String description = method.getReturnType().getNameWithoutPackage();
+			if (DefaultGroovyMethods.asBoolean(method.<Boolean>getNodeMetaData("dgm")))
+				description += " (DGM)";
+			labelDetails.setDescription(description);
+			item.setLabelDetails(labelDetails);
 			item.setKind(GroovyLanguageServerUtils.astNodeToCompletionItemKind(method));
 			String markdownDocs = GroovydocUtils.groovydocToMarkdownDescription(method.getGroovydoc());
 			if (markdownDocs != null) {
@@ -366,6 +410,9 @@ public class CompletionProvider {
 			CompletionItem item = new CompletionItem();
 			item.setLabel(variable.getName());
 			item.setKind(GroovyLanguageServerUtils.astNodeToCompletionItemKind((ASTNode) variable));
+			CompletionItemLabelDetails labelDetails = new CompletionItemLabelDetails();
+			labelDetails.setDescription(variable.getType().getNameWithoutPackage());
+			item.setLabelDetails(labelDetails);
 			if (variable instanceof AnnotatedNode) {
 				AnnotatedNode annotatedVar = (AnnotatedNode) variable;
 				String markdownDocs = GroovydocUtils.groovydocToMarkdownDescription(annotatedVar.getGroovydoc());
@@ -378,7 +425,7 @@ public class CompletionProvider {
 		items.addAll(variableItems);
 	}
 
-	private void populateItemsFromScope(ASTNode node, String namePrefix, List<CompletionItem> items) {
+	private void populateItemsFromScope(ASTNode node, String namePrefix, List<CompletionItem> items, boolean isInNodeBlock) {
 		Set<String> existingNames = new HashSet<>();
 		ASTNode current = node;
 		while (current != null) {
@@ -396,6 +443,10 @@ public class CompletionProvider {
 			}
 			current = ast.getParent(current);
 		}
+		
+		// GDSL symbols are now injected as methods into ClassNodes and will be
+		// included through the normal method completion path above
+		
 		populateTypes(node, namePrefix, existingNames, items);
 	}
 
@@ -437,7 +488,9 @@ public class CompletionProvider {
 			CompletionItem item = new CompletionItem();
 			item.setLabel(classNode.getNameWithoutPackage());
 			item.setKind(GroovyLanguageServerUtils.astNodeToCompletionItemKind(classNode));
-			item.setDetail(packageName);
+			CompletionItemLabelDetails labelDetails = new CompletionItemLabelDetails();
+			labelDetails.setDescription(packageName);
+			item.setLabelDetails(labelDetails);
 			String markdownDocs = GroovydocUtils.groovydocToMarkdownDescription(classNode.getGroovydoc());
 			if (markdownDocs != null) {
 				item.setDocumentation(new MarkupContent(MarkupKind.MARKDOWN, markdownDocs));
@@ -477,8 +530,10 @@ public class CompletionProvider {
 			String packageName = classInfo.getPackageName();
 			CompletionItem item = new CompletionItem();
 			item.setLabel(classInfo.getSimpleName());
-			item.setDetail(packageName);
 			item.setKind(classInfoToCompletionItemKind(classInfo));
+			CompletionItemLabelDetails labelDetails = new CompletionItemLabelDetails();
+			labelDetails.setDescription(packageName);
+			item.setLabelDetails(labelDetails);
 			if (packageName != null && !packageName.equals(enclosingPackageName) && !importNames.contains(className)) {
 				List<TextEdit> additionalTextEdits = new ArrayList<>();
 				TextEdit addImportEdit = createAddImportTextEdit(className, addImportRange);

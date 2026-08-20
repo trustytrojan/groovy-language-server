@@ -1,3 +1,17 @@
+## Fork notice
+
+This is a fork of [GroovyLanguageServer/groovy-language-server](/GroovyLanguageServer/groovy-language-server) that adds:
+
+- Jenkins pipeline step function support via parsing of GDSL files created by Jenkins instances.
+- Semantic tokens over LSP for dynamic coloring/highlighting
+
+I mainly did this so that the VS Code experience is as close to using the [Red Hat Java extension](https://marketplace.visualstudio.com/items?itemName=redhat.java) as possible. Semantic tokens/highlighting is a major part of that.
+
+## Notes
+- Runtime class symbol detection (e.g. for `java.lang.System`) works best when running the LS on Java 8.
+
+The original README continues below.
+
 # Groovy Language Server
 
 A [language server](https://microsoft.github.io/language-server-protocol/) for [Groovy](http://groovy-lang.org/). It is designed specifically for [Moonshine IDE](https://moonshine-ide.com), but it may work in other editors and environments.

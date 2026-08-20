@@ -1,5 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Copyright 2022 Prominic.NET, Inc.
+// Copyright 2026 trustytrojan
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,6 +15,7 @@
 // limitations under the License
 //
 // Author: Prominic.NET, Inc.
+// Author: trustytrojan
 // No warranty of merchantability or fitness of any kind.
 // Use this software at your own risk.
 ////////////////////////////////////////////////////////////////////////////////
@@ -57,6 +59,8 @@ public class ReferenceProvider {
 		List<ASTNode> references = GroovyASTUtils.getReferences(offsetNode, ast);
 		List<Location> locations = references.stream().map(node -> {
 			URI uri = ast.getURI(node);
+			if (uri == null)
+				return null;
 			return GroovyLanguageServerUtils.astNodeToLocation(node, uri);
 		}).filter(location -> location != null).collect(Collectors.toList());
 

@@ -1,5 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Copyright 2022 Prominic.NET, Inc.
+// Copyright 2026 trustytrojan
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,6 +15,7 @@
 // limitations under the License
 //
 // Author: Prominic.NET, Inc.
+// Author: trustytrojan
 // No warranty of merchantability or fitness of any kind.
 // Use this software at your own risk.
 ////////////////////////////////////////////////////////////////////////////////
@@ -31,6 +33,8 @@ import java.util.concurrent.CompletableFuture;
 import org.eclipse.lsp4j.CompletionOptions;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
+import org.eclipse.lsp4j.SemanticTokensLegend;
+import org.eclipse.lsp4j.SemanticTokensWithRegistrationOptions;
 import org.eclipse.lsp4j.ServerCapabilities;
 import org.eclipse.lsp4j.SignatureHelpOptions;
 import org.eclipse.lsp4j.TextDocumentSyncKind;
@@ -43,6 +47,7 @@ import org.eclipse.lsp4j.services.WorkspaceService;
 
 import net.prominic.groovyls.config.CompilationUnitFactory;
 import net.prominic.groovyls.config.ICompilationUnitFactory;
+import net.prominic.groovyls.providers.SemanticTokensProvider;
 
 public class GroovyLanguageServer implements LanguageServer, LanguageClientAware {
 
@@ -92,6 +97,14 @@ public class GroovyLanguageServer implements LanguageServer, LanguageClientAware
         SignatureHelpOptions signatureHelpOptions = new SignatureHelpOptions();
         signatureHelpOptions.setTriggerCharacters(Arrays.asList("(", ","));
         serverCapabilities.setSignatureHelpProvider(signatureHelpOptions);
+
+        // Register semantic tokens provider for full document tokenization
+        SemanticTokensWithRegistrationOptions semanticTokensOptions = new SemanticTokensWithRegistrationOptions();
+        semanticTokensOptions.setLegend(new SemanticTokensLegend(
+                SemanticTokensProvider.SemanticTokenTypes.getList(),
+                SemanticTokensProvider.SemanticTokenModifiers.getList()));
+        semanticTokensOptions.setFull(true);
+        serverCapabilities.setSemanticTokensProvider(semanticTokensOptions);
 
         InitializeResult initializeResult = new InitializeResult(serverCapabilities);
         return CompletableFuture.completedFuture(initializeResult);
