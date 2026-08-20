@@ -1,7 +1,13 @@
-name: Gradle CI
+name: Build
 
 on:
   push:
+    paths:
+      - '**/*gradle*'
+      - src/**/*.java
+      - vscode-extension/src/**/*.ts
+      - vscode-extension/src/*.js*
+      - .github/workflows/*.yml
   pull_request:
     branches: [master]
 
