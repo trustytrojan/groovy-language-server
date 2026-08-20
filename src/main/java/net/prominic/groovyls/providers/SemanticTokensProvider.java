@@ -48,6 +48,7 @@ import org.codehaus.groovy.ast.ClassNode;
 import net.prominic.groovyls.compiler.util.GroovyASTUtils;
 
 import org.codehaus.groovy.ast.expr.DeclarationExpression;
+import org.codehaus.groovy.ast.expr.Expression;
 import org.codehaus.groovy.ast.expr.MethodCallExpression;
 import net.prominic.groovyls.util.GroovyLanguageServerUtils;
 
@@ -139,10 +140,10 @@ public class SemanticTokensProvider {
 		Set<String> emitted = new HashSet<>();
 		List<ASTNode> nodes = astVisitor.getNodes(uri);
 
-		// System.err.println();
+		// System.err.println("--- Start of text document: " + uri);
 		for (ASTNode node : nodes) {
 			// if (node instanceof Expression && !((Expression) node).isSynthetic()) {
-			// 	System.err.println(node);
+			// System.err.println(node);
 			// }
 
 			// Color in `def` or `var` as a type when used, just like Eclipse JDT LS
@@ -165,9 +166,10 @@ public class SemanticTokensProvider {
 					++lineno;
 				}
 				if (charno > -1) {
-					Range ofDef = new Range(new org.eclipse.lsp4j.Position(lineno, charno), new org.eclipse.lsp4j.Position(lineno, charno + 3));
-					tokens.add(new Token(ofDef.getStart().getLine(), ofDef.getStart().getCharacter(), 3, SemanticTokenTypes.TYPE.ordinal(), 0));
-					// System.err.printf("range=%s de=%s s='%s' ofDef=%s\n", r, de, s, ofDef);
+					Range ofDef = new Range(new org.eclipse.lsp4j.Position(lineno, charno),
+							new org.eclipse.lsp4j.Position(lineno, charno + 3));
+					tokens.add(new Token(ofDef.getStart().getLine(), ofDef.getStart().getCharacter(), 3,
+							SemanticTokenTypes.TYPE.ordinal(), 0));
 					continue;
 				}
 			}
