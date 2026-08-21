@@ -209,22 +209,25 @@ public class SemanticTokensProvider {
 		return encodeDeltaTokens(tokens);
 	}
 
-	private void processMethodCall(MethodCallExpression call, List<Token> tokens) {
-		String methodName = call.getMethodAsString();
-		if (methodName == null || methodName.isEmpty())
+	private void processMethodCall(final MethodCallExpression call, final List<Token> tokens) {
+		final var methodText = call.getMethodAsString();
+
+		// We only want to deal with calls like `obj.func()`, not `(expression)()`.
+		if (methodText == null || methodText.isEmpty())
 			return;
 
-		MethodNode method = GroovyASTUtils.getMethodFromCallExpression(call, astVisitor);
-		if (method == null)
+		// This is the original MethodNode from the class it was declared in, if found.
+		final var actualMethod = GroovyASTUtils.getMethodFromCallExpression(call, astVisitor);
+		if (actualMethod == null)
 			return;
 
-		Range methodRange = GroovyLanguageServerUtils.astNodeToRange(call.getMethod());
-		if (methodRange == null)
+		// If call is `obj.func()`, then this range spans `func`.
+		final var range = GroovyLanguageServerUtils.astNodeToRange(call.getMethod());
+		if (range == null)
 			return;
 
-		Position pos = new Position(methodRange.getStart().getLine(), methodRange.getStart().getCharacter());
-		tokens.add(new Token(pos.getLine(), pos.getCharacter(), methodName.length(),
-				SemanticTokenTypes.METHOD.ordinal(), getModifiersOfMethod(method)));
+		tokens.add(new Token(range.getStart().getLine(), range.getStart().getCharacter(), methodText.length(),
+				SemanticTokenTypes.METHOD.ordinal(), getModifiersOfMethod(actualMethod)));
 	}
 
 	private int getModifiersOfMethod(MethodNode method) {
