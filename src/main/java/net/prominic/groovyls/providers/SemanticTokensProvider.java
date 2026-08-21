@@ -226,8 +226,11 @@ public class SemanticTokensProvider {
 		if (range == null)
 			return;
 
-		tokens.add(new Token(range.getStart().getLine(), range.getStart().getCharacter(), methodText.length(),
-				SemanticTokenTypes.METHOD.ordinal(), getModifiersOfMethod(actualMethod)));
+		final var lineno = range.getStart().getLine();
+		final var charno = range.getStart().getCharacter();
+
+		tokens.add(new Token(lineno, charno, methodText.length(), SemanticTokenTypes.METHOD.ordinal(),
+				getModifiersOfMethod(actualMethod)));
 	}
 
 	private int getModifiersOfMethod(MethodNode method) {
@@ -265,35 +268,76 @@ public class SemanticTokensProvider {
 	}
 
 	private void processPropertyExpression(PropertyExpression pe, List<Token> tokens) {
-		String propName = pe.getPropertyAsString();
+		// propName and propRange represent the `prop` part of `obj.prop`.
+		final var propName = pe.getPropertyAsString();
 		if (propName == null || propName.isEmpty())
 			return;
 
-		ASTNode propNode = (ASTNode) pe.getProperty();
-		Range propRange = GroovyLanguageServerUtils.astNodeToRange(propNode);
+		final var propRange = GroovyLanguageServerUtils.astNodeToRange(pe.getProperty());
 		if (propRange == null)
 			return;
 
-		boolean fieldExists = false;
+		final var lineno = propRange.getStart().getLine();
+		final var charno = propRange.getStart().getCharacter();
 
 		// Use these utility functions because they also take into account member
 		// visibility.
-		FieldNode fn = GroovyASTUtils.getFieldFromExpression(pe, astVisitor);
-		PropertyNode pn = GroovyASTUtils.getPropertyFromExpression(pe, astVisitor);
-		fieldExists = (fn != null) || (pn != null);
+		final var fieldNode = GroovyASTUtils.getFieldFromExpression(pe, astVisitor);
+		final var propertyNode = GroovyASTUtils.getPropertyFromExpression(pe, astVisitor);
 
-		if (!fieldExists)
+		System.err.printf("processPropertyExpression: pe=%s fieldNode=%s propertyNode=%s\n", pe, fieldNode,
+				propertyNode);
+
+		if (fieldNode == null && propertyNode == null) {
+			final var getterName = convertToGetterName(propName);
+			final var setterName = convertToSetterName(propName);
+			final var objType = pe.getObjectExpression().getType();
+
+			System.err.printf("finding getter/setter: objType='%s' getterName='%s' setterName='%s'\n", objType,
+					getterName, setterName);
+
+			MethodNode getter = null, setter = null;
+			for (final var method : objType.getAllDeclaredMethods()) {
+				System.err.printf("finding getter/setter: method.getName()='%s'\n", method.getName());
+				if (method.getName().equals(getterName))
+					getter = method;
+				else if (method.getName().equals(setterName))
+					setter = method;
+				if (getter != null && setter != null)
+					break;
+			}
+
+			if (getter == null && setter == null)
+				return;
+
+			// No setter: treat the property like a constant.
+			final var modifiers = (setter == null) ? SemanticTokenModifiers.bitset(SemanticTokenModifiers.READONLY) : 0;
+
+			tokens.add(new Token(lineno, charno, propName.length(), SemanticTokenTypes.PROPERTY.ordinal(), modifiers));
 			return;
+		}
 
-		int modifiers = 0;
-		if (fn != null)
-			modifiers = getModifiersOfField(fn);
-		else if (pn != null)
-			modifiers = getModifiersOfProperty(pn);
+		var modifiers = 0;
+		if (fieldNode != null)
+			modifiers = getModifiersOfField(fieldNode);
+		else if (propertyNode != null)
+			modifiers = getModifiersOfProperty(propertyNode);
 
-		Position pos = new Position(propRange.getStart().getLine(), propRange.getStart().getCharacter());
-		tokens.add(new Token(pos.getLine(), pos.getCharacter(), propName.length(),
-				SemanticTokenTypes.PROPERTY.ordinal(), modifiers));
+		tokens.add(new Token(lineno, charno, propName.length(), SemanticTokenTypes.PROPERTY.ordinal(), modifiers));
+	}
+
+	private static String convertToGetterName(String propName) {
+		if (propName == null || propName.isBlank())
+			throw new IllegalArgumentException();
+		final var firstChar = propName.charAt(0);
+		return "get" + Character.toUpperCase(firstChar) + propName.substring(1);
+	}
+
+	private static String convertToSetterName(String propName) {
+		if (propName == null || propName.isBlank())
+			throw new IllegalArgumentException();
+		final var firstChar = propName.charAt(0);
+		return "set" + Character.toUpperCase(firstChar) + propName.substring(1);
 	}
 
 	// probably should be named `processSymbol` and/or should be split up by type a
