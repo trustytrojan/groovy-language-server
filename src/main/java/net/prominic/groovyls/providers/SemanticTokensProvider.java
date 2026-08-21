@@ -23,9 +23,7 @@ import java.lang.reflect.Modifier;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Stream;
 
 import org.eclipse.lsp4j.Position;
@@ -150,6 +148,11 @@ public class SemanticTokensProvider {
 
 		if (expr instanceof final Expression e) {
 			System.err.printf("  type: %s\n", e.getType());
+			if (e instanceof final VariableExpression ve) {
+				System.err.printf("  accessed_variable: %s\n", ve.getAccessedVariable());
+			} else if (e instanceof final MethodCallExpression mce) {
+				System.err.printf("  method_target: %s\n", mce.getMethodTarget());
+			}
 		} else if (expr instanceof final Variable v) {
 			System.err.printf("  type: %s\n  initial_expression: %s\n  is_final: %s\n", v.getType(),
 					v.getInitialExpression(), Modifier.isFinal(v.getModifiers()));
@@ -217,7 +220,9 @@ public class SemanticTokensProvider {
 			return;
 
 		// This is the original MethodNode from the class it was declared in, if found.
-		final var actualMethod = GroovyASTUtils.getMethodFromCallExpression(call, astVisitor);
+		var actualMethod = call.getMethodTarget();
+		if (actualMethod == null)
+			actualMethod = GroovyASTUtils.getMethodFromCallExpression(call, astVisitor);
 		if (actualMethod == null)
 			return;
 
@@ -285,20 +290,13 @@ public class SemanticTokensProvider {
 		final var fieldNode = GroovyASTUtils.getFieldFromExpression(pe, astVisitor);
 		final var propertyNode = GroovyASTUtils.getPropertyFromExpression(pe, astVisitor);
 
-		System.err.printf("processPropertyExpression: pe=%s fieldNode=%s propertyNode=%s\n", pe, fieldNode,
-				propertyNode);
-
 		if (fieldNode == null && propertyNode == null) {
 			final var getterName = convertToGetterName(propName);
 			final var setterName = convertToSetterName(propName);
 			final var objType = pe.getObjectExpression().getType();
 
-			System.err.printf("finding getter/setter: objType='%s' getterName='%s' setterName='%s'\n", objType,
-					getterName, setterName);
-
 			MethodNode getter = null, setter = null;
 			for (final var method : objType.getAllDeclaredMethods()) {
-				System.err.printf("finding getter/setter: method.getName()='%s'\n", method.getName());
 				if (method.getName().equals(getterName))
 					getter = method;
 				else if (method.getName().equals(setterName))

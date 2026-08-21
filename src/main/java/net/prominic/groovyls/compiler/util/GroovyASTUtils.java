@@ -107,9 +107,11 @@ public class GroovyASTUtils {
         } else if (node instanceof MethodNode) {
             return node;
         } else if (node instanceof ConstantExpression && parentNode != null) {
-            if (parentNode instanceof MethodCallExpression) {
-                MethodCallExpression methodCallExpression = (MethodCallExpression) parentNode;
-                return GroovyASTUtils.getMethodFromCallExpression(methodCallExpression, astVisitor);
+            if (parentNode instanceof final MethodCallExpression mce) {
+                final var methodTarget = mce.getMethodTarget();
+                if (methodTarget != null)
+                    return methodTarget;
+                return GroovyASTUtils.getMethodFromCallExpression(mce, astVisitor);
             } else if (parentNode instanceof PropertyExpression) {
                 PropertyExpression propertyExpression = (PropertyExpression) parentNode;
                 PropertyNode propNode = GroovyASTUtils.getPropertyFromExpression(propertyExpression, astVisitor);
