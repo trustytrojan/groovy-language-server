@@ -105,16 +105,13 @@ public class HoverProvider {
 	}
 
 	private String getContent(ASTNode hoverNode) {
-		if (hoverNode instanceof ClassNode) {
-			ClassNode classNode = (ClassNode) hoverNode;
-			// We just want the full class name, just like Eclipse JDT LS.
-			return classNode.getName();
-		} else if (hoverNode instanceof MethodNode) {
-			MethodNode methodNode = (MethodNode) hoverNode;
-			return GroovyNodeToStringUtils.methodToString(methodNode, ast);
-		} else if (hoverNode instanceof Variable) {
-			Variable varNode = (Variable) hoverNode;
-			return GroovyNodeToStringUtils.variableToString(varNode, ast);
+		if (hoverNode instanceof final ClassNode cn) {
+			// We want the full class name, just like Eclipse JDT LS.
+			return cn.getName();
+		} else if (hoverNode instanceof final MethodNode mn) {
+			return GroovyNodeToStringUtils.methodToString(mn, ast);
+		} else if (hoverNode instanceof final Variable v) {
+			return GroovyNodeToStringUtils.variableToString(v, ast);
 		} else {
 			System.err.println("*** hover not available for node: " + hoverNode);
 		}

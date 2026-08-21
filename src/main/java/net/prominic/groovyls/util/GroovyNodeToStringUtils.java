@@ -22,7 +22,6 @@ package net.prominic.groovyls.util;
 import org.codehaus.groovy.ast.ASTNode;
 import org.codehaus.groovy.ast.ClassNode;
 import org.codehaus.groovy.ast.ConstructorNode;
-import org.codehaus.groovy.ast.FieldNode;
 import org.codehaus.groovy.ast.MethodNode;
 import org.codehaus.groovy.ast.Parameter;
 import org.codehaus.groovy.ast.Variable;
@@ -45,26 +44,11 @@ public class GroovyNodeToStringUtils {
 			return constructorToString((ConstructorNode) methodNode, ast);
 		}
 		StringBuilder builder = new StringBuilder();
-		if (methodNode.isPublic()) {
-			if (!methodNode.isSyntheticPublic()) {
-				builder.append("public ");
-			}
-		} else if (methodNode.isProtected()) {
-			builder.append("protected ");
-		} else if (methodNode.isPrivate()) {
-			builder.append("private ");
-		}
-
-		if (methodNode.isStatic()) {
-			builder.append("static ");
-		}
-
-		if (methodNode.isFinal()) {
-			builder.append("final ");
-		}
 		ClassNode returnType = methodNode.getReturnType();
 		builder.append(returnType.getNameWithoutPackage());
 		builder.append(" ");
+		builder.append(methodNode.getDeclaringClass().getName());
+		builder.append('.');
 		builder.append(methodNode.getName());
 		builder.append("(");
 		builder.append(parametersToString(methodNode.getParameters(), ast));
@@ -86,26 +70,6 @@ public class GroovyNodeToStringUtils {
 
 	public static String variableToString(Variable variable, ASTNodeVisitor ast) {
 		StringBuilder builder = new StringBuilder();
-		if (variable instanceof FieldNode) {
-			FieldNode fieldNode = (FieldNode) variable;
-			if (fieldNode.isPublic()) {
-				builder.append("public ");
-			}
-			if (fieldNode.isProtected()) {
-				builder.append("protected ");
-			}
-			if (fieldNode.isPrivate()) {
-				builder.append("private ");
-			}
-
-			if (fieldNode.isFinal()) {
-				builder.append("final ");
-			}
-
-			if (fieldNode.isStatic()) {
-				builder.append("static ");
-			}
-		}
 		ClassNode varType = null;
 		if (variable instanceof ASTNode) {
 			varType = GroovyASTUtils.getTypeOfNode((ASTNode) variable, ast);

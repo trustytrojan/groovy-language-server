@@ -19,6 +19,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 package net.prominic.groovyls.providers;
 
+import java.lang.reflect.Modifier;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -140,6 +141,26 @@ public class SemanticTokensProvider {
 		return new Token(startLine, startChar, endChar - startChar, type, modifiers);
 	}
 
+	private static void debugPrint(ASTNode expr, String text) {
+		if (expr instanceof final Expression e && e.isSynthetic()) {
+			return;
+		}
+
+		System.err.printf("debugPrint: %s\n  text: '%s'\n", expr, expr.getText());
+
+		if (expr instanceof final Expression e) {
+			System.err.printf("  type: %s\n", e.getType());
+		} else if (expr instanceof final Variable v) {
+			System.err.printf("  type: %s\n  initial_expression: %s\n  is_final: %s\n", v.getType(),
+					v.getInitialExpression(), Modifier.isFinal(v.getModifiers()));
+		}
+
+		final var r = GroovyLanguageServerUtils.astNodeToRange(expr);
+		if (r != null) {
+			System.err.printf("  range_to_text: '%s'\n", Ranges.getSubstring(text, r));
+		}
+	}
+
 	public SemanticTokens provideFull(TextDocumentIdentifier textDocument) {
 		URI uri = URI.create(textDocument.getUri());
 		String text = fileContentsTracker.getContents(uri);
@@ -151,11 +172,9 @@ public class SemanticTokensProvider {
 		Set<String> emitted = new HashSet<>();
 		List<ASTNode> nodes = astVisitor.getNodes(uri);
 
-		// System.err.println("--- Start of text document: " + uri);
+		System.err.println("--- Start of text document: " + uri);
 		for (ASTNode node : nodes) {
-			// if (node instanceof Expression && !((Expression) node).isSynthetic()) {
-			// System.err.println(node);
-			// }
+			debugPrint(node, text);
 
 			if (node instanceof ConstructorCallExpression) {
 				ClassNode type = ((ConstructorCallExpression) node).getType();
@@ -165,61 +184,21 @@ public class SemanticTokensProvider {
 				if (r == null)
 					continue;
 				tokens.add(makeTokenFromRange(r, SemanticTokenTypes.METHOD.ordinal(), 0));
-				continue;
-			}
-
-			if (node instanceof DeclarationExpression) {
+			} else if (node instanceof DeclarationExpression) {
 				DeclarationExpression de = (DeclarationExpression) node;
 				VariableExpression ve = de.getVariableExpression();
-
-				if (ve.isDynamicTyped()) {
-					// Color in `def` or `var` as a type when used, just like Eclipse JDT LS
-					final Range r = GroovyLanguageServerUtils.astNodeToRange(de);
-					String s = Ranges.getSubstring(text, r);
-					String[] lines = s.split("\n");
-					int lineno = r.getStart().getLine();
-					int charno = -1;
-					for (String line : lines) {
-						int idx = line.indexOf("def");
-						if (idx == -1) {
-							idx = line.indexOf("var");
-						}
-						if (idx > -1) {
-							charno = idx;
-							break;
-						}
-						++lineno;
-					}
-					if (charno > -1) {
-						Range ofDef = new Range(new Position(lineno, charno), new Position(lineno, charno + 3));
-						tokens.add(new Token(ofDef.getStart().getLine(), ofDef.getStart().getCharacter(), 3,
-								SemanticTokenTypes.TYPE.ordinal(), 0));
-						continue;
-					}
-				} else {
-					ClassNode type = ve.getOriginType();
-					final Range r = GroovyLanguageServerUtils.astNodeToRange(type);
-					if (r == null)
-						continue;
-					tokens.add(makeTokenFromRange(r, SemanticTokenTypes.TYPE.ordinal(), 0));
-				}
-
-			}
-
-			// 0) Method calls: color method name when we can resolve a method on the
-			// receiver
-			if (node instanceof MethodCallExpression) {
+				ClassNode type = ve.getOriginType();
+				final Range r = GroovyLanguageServerUtils.astNodeToRange(type);
+				if (r == null)
+					continue;
+				tokens.add(makeTokenFromRange(r, SemanticTokenTypes.TYPE.ordinal(), 0));
+			} else if (node instanceof MethodCallExpression) {
 				processMethodCall((MethodCallExpression) node, tokens, emitted);
-			}
-
-			// 1) Handle property/field access expressions (e.g., this.x,
-			// Closure.DELEGATE_FIRST)
-			if (node instanceof PropertyExpression) {
+			} else if (node instanceof PropertyExpression) {
 				processPropertyExpression((PropertyExpression) node, tokens, emitted);
+			} else {
+				processDeclaration(node, text, tokens, emitted);
 			}
-
-			// 2) Declarations: methods, variables, fields, properties, parameters
-			processDeclaration(node, text, tokens, emitted);
 		}
 
 		if (tokens.isEmpty()) {
@@ -275,12 +254,14 @@ public class SemanticTokensProvider {
 		List<SemanticTokenModifiers> modifiers = new ArrayList<>();
 		if (property.isStatic())
 			modifiers.add(SemanticTokenModifiers.STATIC);
+		if (Modifier.isFinal(property.getModifiers()))
+			modifiers.add(SemanticTokenModifiers.READONLY);
 		return SemanticTokenModifiers.bitset(modifiers.toArray(SemanticTokenModifiers[]::new));
 	}
 
 	private int getModifiersOfVariable(VariableExpression ve) {
 		List<SemanticTokenModifiers> modifiers = new ArrayList<>();
-		if (java.lang.reflect.Modifier.isFinal(ve.getModifiers()))
+		if (Modifier.isFinal(ve.getModifiers()))
 			modifiers.add(SemanticTokenModifiers.READONLY);
 		return SemanticTokenModifiers.bitset(modifiers.toArray(SemanticTokenModifiers[]::new));
 	}
@@ -313,12 +294,8 @@ public class SemanticTokensProvider {
 			modifiers = getModifiersOfProperty(pn);
 
 		Position pos = new Position(propRange.getStart().getLine(), propRange.getStart().getCharacter());
-		String key = pos.getLine() + ":" + pos.getCharacter() + ":" + propName + ":" + "property";
-		if (emitted.add(key)) {
-			tokens.add(
-					new Token(pos.getLine(), pos.getCharacter(), propName.length(),
-							SemanticTokenTypes.PROPERTY.ordinal(), modifiers));
-		}
+		tokens.add(new Token(pos.getLine(), pos.getCharacter(), propName.length(),
+				SemanticTokenTypes.PROPERTY.ordinal(), modifiers));
 	}
 
 	// probably should be named `processSymbol` and/or should be split up by type a
@@ -359,10 +336,7 @@ public class SemanticTokensProvider {
 		else if (node instanceof VariableExpression)
 			modifiers = getModifiersOfVariable((VariableExpression) node);
 
-		String key = pos.getLine() + ":" + pos.getCharacter() + ":" + name + ":" + tokenType;
-		if (emitted.add(key)) {
-			tokens.add(new Token(pos.getLine(), pos.getCharacter(), name.length(), tokenType, modifiers));
-		}
+		tokens.add(new Token(pos.getLine(), pos.getCharacter(), name.length(), tokenType, modifiers));
 	}
 
 	private int tokenTypeIndexFromNode(ASTNode node) {
@@ -392,12 +366,8 @@ public class SemanticTokensProvider {
 
 		Position posCtor = toLineCol(text, foundCtor);
 		int tokenTypeCtor = SemanticTokenTypes.METHOD.ordinal();
-		String keyCtor = posCtor.getLine() + ":" + posCtor.getCharacter() + ":" + className + ":" + tokenTypeCtor;
-		if (emitted.add(keyCtor)) {
-			tokens.add(
-					new Token(posCtor.getLine(), posCtor.getCharacter(), className.length(), tokenTypeCtor,
-							getModifiersOfMethod(mn)));
-		}
+		tokens.add(new Token(posCtor.getLine(), posCtor.getCharacter(), className.length(), tokenTypeCtor,
+				getModifiersOfMethod(mn)));
 	}
 
 	private String getDeclarationName(ASTNode node) {
@@ -448,7 +418,7 @@ public class SemanticTokensProvider {
 			data.add(deltaStart);
 			data.add(t.length);
 			data.add(t.type);
-			data.add(t.modifiers); // modifiers bitset
+			data.add(t.modifiers);
 
 			prevLine = t.line;
 			prevChar = t.startChar;
