@@ -169,7 +169,6 @@ public class SemanticTokensProvider {
 		}
 
 		List<Token> tokens = new ArrayList<>();
-		Set<String> emitted = new HashSet<>();
 		List<ASTNode> nodes = astVisitor.getNodes(uri);
 
 		System.err.println("--- Start of text document: " + uri);
@@ -193,11 +192,11 @@ public class SemanticTokensProvider {
 					continue;
 				tokens.add(makeTokenFromRange(r, SemanticTokenTypes.TYPE.ordinal(), 0));
 			} else if (node instanceof MethodCallExpression) {
-				processMethodCall((MethodCallExpression) node, tokens, emitted);
+				processMethodCall((MethodCallExpression) node, tokens);
 			} else if (node instanceof PropertyExpression) {
-				processPropertyExpression((PropertyExpression) node, tokens, emitted);
+				processPropertyExpression((PropertyExpression) node, tokens);
 			} else {
-				processDeclaration(node, text, tokens, emitted);
+				processDeclaration(node, text, tokens);
 			}
 		}
 
@@ -210,7 +209,7 @@ public class SemanticTokensProvider {
 		return encodeDeltaTokens(tokens);
 	}
 
-	private void processMethodCall(MethodCallExpression call, List<Token> tokens, Set<String> emitted) {
+	private void processMethodCall(MethodCallExpression call, List<Token> tokens) {
 		String methodName = call.getMethodAsString();
 		if (methodName == null || methodName.isEmpty())
 			return;
@@ -224,12 +223,8 @@ public class SemanticTokensProvider {
 			return;
 
 		Position pos = new Position(methodRange.getStart().getLine(), methodRange.getStart().getCharacter());
-		String key = pos.getLine() + ":" + pos.getCharacter() + ":" + methodName + ":" + "method";
-		if (emitted.add(key)) {
-			tokens.add(new Token(pos.getLine(), pos.getCharacter(), methodName.length(),
-					SemanticTokenTypes.METHOD.ordinal(),
-					getModifiersOfMethod(method)));
-		}
+		tokens.add(new Token(pos.getLine(), pos.getCharacter(), methodName.length(),
+				SemanticTokenTypes.METHOD.ordinal(), getModifiersOfMethod(method)));
 	}
 
 	private int getModifiersOfMethod(MethodNode method) {
@@ -266,7 +261,7 @@ public class SemanticTokensProvider {
 		return SemanticTokenModifiers.bitset(modifiers.toArray(SemanticTokenModifiers[]::new));
 	}
 
-	private void processPropertyExpression(PropertyExpression pe, List<Token> tokens, Set<String> emitted) {
+	private void processPropertyExpression(PropertyExpression pe, List<Token> tokens) {
 		String propName = pe.getPropertyAsString();
 		if (propName == null || propName.isEmpty())
 			return;
@@ -300,13 +295,13 @@ public class SemanticTokensProvider {
 
 	// probably should be named `processSymbol` and/or should be split up by type a
 	// bit more
-	private void processDeclaration(ASTNode node, String text, List<Token> tokens, Set<String> emitted) {
+	private void processDeclaration(ASTNode node, String text, List<Token> tokens) {
 		Range range = GroovyLanguageServerUtils.astNodeToRange(node);
 		if (range == null)
 			return;
 
 		if (node instanceof MethodNode && ((MethodNode) node).isConstructor()) {
-			processConstructorDeclaration((MethodNode) node, text, range, tokens, emitted);
+			processConstructorDeclaration((MethodNode) node, text, range, tokens);
 			return;
 		}
 
@@ -350,8 +345,7 @@ public class SemanticTokensProvider {
 		return SemanticTokenTypes.VARIABLE.ordinal();
 	}
 
-	private void processConstructorDeclaration(MethodNode mn, String text, Range range, List<Token> tokens,
-			Set<String> emitted) {
+	private void processConstructorDeclaration(MethodNode mn, String text, Range range, List<Token> tokens) {
 		ClassNode declaringClass = mn.getDeclaringClass();
 		String className = declaringClass != null ? declaringClass.getNameWithoutPackage() : null;
 		if (className == null || className.isEmpty())
